@@ -53,6 +53,28 @@ def generate_trans_matrix(x, H, W):
     omega = np.matmul(matA, np.matmul(matB, np.matmul(matC, matD)))
     
     return omega
+
+def add_trans_matrix_to_traces_dict(traces_dict, matrix_align):
+    """
+    Function that add the chromatic aberrations correction matrix to the traces dictionary
+
+    Parameters
+    ----------
+    traces_dict : dict
+        Dictionnary containing all the traces results.
+    matrix_align : list of float
+        [sx, sy, dx, dy, cx, cy, theta] parameters for the optimized chromatic correction matrix
+
+    Returns
+    -------
+    traces_dict : dict
+        Dictionnary containing all the traces results with updated optimized chromatic correction matrix.
+
+    """
+    
+    traces_dict['chromatic_aberration_corr_matrix'] = matrix_align
+    
+    return traces_dict
     
 
 def logP_chrom_corr(x, img1, img2):

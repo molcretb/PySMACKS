@@ -8,6 +8,8 @@ import numpy as np
 from tkinter.filedialog import askopenfilenames
 from tkinter import Tk
 from PIL import Image
+from tkinter.filedialog import asksaveasfile
+from json import dump, JSONEncoder, load
 
 def load_data():
     """
@@ -118,7 +120,70 @@ def deinterleave_acceptor_channel(img_A, DA_is = 'odd'):
     #return the deinterleaved DA and AA channels as separate Numpy arrays
     return img_DA, img_AA
 
+class NpEncoder(JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
 
 
+def save_traces_dict(traces_dict):
+    """
+    This function is used to save the traces results dictionary as a JSON file.
 
+    Parameters
+    ----------
+    traces_dict : dict
+        Dictionnary containing all the traces results.
+
+    Returns
+    -------
+    None.
+
+    """
+    
+    # A Tkinter window first appears and asks the user to input the name and path of the JSON file to save the traces dataset
+    root = Tk(className='Save traces datasets', )
+    file_save = asksaveasfile(title="Save traces dataset", defaultextension=".json")
+    file_save.close()
+    root.destroy()
+    
+    # The traces dictionary is then saved at the path location provided by the user
+    with open(file_save.name, "w") as fp:
+        dump(traces_dict, fp, cls=NpEncoder, separators=(',', ':')) 
+    print('Traces dataset saved as JSON file to path: ' + file_save.name)
+    return
+
+def load_JSON_traces_data():
+    """
+    Function used to load a previously saved traces dataset JSON file
+    
+    Parameters
+    ----------
+    None.
+
+    Returns
+    -------
+    traces_dict : dict
+        Dictionnary containing all the traces results.
+
+    """
+    
+    # Select the JSON dataset file you want to load
+    root = Tk(className='Open JSON dataset', )
+    file_path = askopenfilenames(title="Open the JSON dataset")
+    root.destroy()
+    
+    # Read the JSON file and convert it to a dictionary
+    with open(file_path[0]) as json_file:
+        traces_dict = load(json_file)
+        
+    print('Traces dataset loaded!')
+    
+    # Return the traces dataset as dictionary
+    return traces_dict
 

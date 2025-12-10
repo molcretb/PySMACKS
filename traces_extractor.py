@@ -12,6 +12,7 @@ from scipy.ndimage import median_filter
 from chromatic_aberrations_correction import *
 from utils import *
 
+
 def detect_spot(img_DD, img_DA, kernel_size=2, min_distance=2, proj_oper = 'sum', size_median_filt = 10):
     """
     Function used to detect the spots xy localizations from both the DD and DA channels
@@ -197,9 +198,9 @@ def spot_trace_extractor(coord_spots, img_stack_D, file_path_D, img_stack_A, fil
         
         # add a ney entry to the dict whose key is trace ID, and contains xy coordinates and subtraces for DD, DA and AA channels
         traces_data[str(k)] = {'x_coord': coord_spots[k,0], 'y_coord': coord_spots[k,1]}
-        traces_data[str(k)]['Intensity_DD'] = trace_DD
-        traces_data[str(k)]['Intensity_DA'] = trace_DA
-        traces_data[str(k)]['Intensity_AA'] = trace_AA
+        traces_data[str(k)]['Intensity_DD'] = np.round(trace_DD,0).astype(np.int64)
+        traces_data[str(k)]['Intensity_DA'] = np.round(trace_DA,0).astype(np.int64)
+        traces_data[str(k)]['Intensity_AA'] = np.round(trace_AA,0).astype(np.int64)
     
     # after extraction of the first submovie, loop over the next submovies until all have been processed, concatenate the subtraces to their corresponding traces ID inside the dict\
         # really similar to the previous section, with addition of a chromatic correction of the donor submovie
@@ -224,9 +225,9 @@ def spot_trace_extractor(coord_spots, img_stack_D, file_path_D, img_stack_A, fil
             trace_AA = np.max(np.max(img_stack_A[xl:xr,yu:yd,[i for i in range(AA_start,img_stack_A.shape[2],2)]], axis = 0),axis=0)
             
             # concatenation of subtraces to their cooresponding trace ID
-            traces_data[str(k)]['Intensity_DD'] = np.concat((traces_data[str(k)]['Intensity_DD'], trace_DD))
-            traces_data[str(k)]['Intensity_DA'] = np.concat((traces_data[str(k)]['Intensity_DA'], trace_DA))
-            traces_data[str(k)]['Intensity_AA'] = np.concat((traces_data[str(k)]['Intensity_AA'], trace_AA))
+            traces_data[str(k)]['Intensity_DD'] = np.concat((traces_data[str(k)]['Intensity_DD'], np.round(trace_DD,0).astype(np.int64)))
+            traces_data[str(k)]['Intensity_DA'] = np.concat((traces_data[str(k)]['Intensity_DA'], np.round(trace_DA,0).astype(np.int64)))
+            traces_data[str(k)]['Intensity_AA'] = np.concat((traces_data[str(k)]['Intensity_AA'], np.round(trace_AA,0).astype(np.int64)))
             
     print('Traces extraction and concatenation completed!')
     
@@ -256,7 +257,7 @@ def detect_bleaching_event(traces_data, percentage_value = 0.05, KCPD_model = 'l
     # loop over each individual traces
     for i in range(len(traces_data)):
         print(str(i + 1) + ' / ' + str(len(traces_data)) + ' processed')
-        
+
         # calculate the number of frames corresponding to X % of the total trace duration, that will be used to estimate the median level at beginning and end of the trace
         one_perc = int(len(traces_data[str(i)]['Intensity_DD'])*percentage_value)
         traceDD_start_value = np.median(traces_data[str(i)]['Intensity_DD'][0:one_perc])
@@ -427,3 +428,4 @@ def filter_traces_on_SNR(traces_data, SNR_thresh = 8):
     print('High SNR traces filter step completed!')
     
     return traces_high_SNR, list_index_high_SNR
+    
