@@ -10,6 +10,9 @@ from tkinter import Tk
 from PIL import Image
 from tkinter.filedialog import asksaveasfile
 from json import dump, JSONEncoder, load
+import matplotlib.pyplot as plt
+from pandas import DataFrame as DF
+from seaborn import jointplot as jointplot
 
 def load_data():
     """
@@ -187,3 +190,81 @@ def load_JSON_traces_data():
     # Return the traces dataset as dictionary
     return traces_dict
 
+def plot_multiple_traces(traces_data, traces_ID = 0, DD_on = 1, DA_on = 1, AA_on = 1, DD_DA_on = 1, nb_plot = 5):
+    """
+    Function used to plot multiple traces on subplots, can include or exclude each channels
+
+    Parameters
+    ----------
+    traces_data : dict
+        Dictionnary containing all the traces results.
+    traces_ID : int, optional
+        First trace ID we want to plot, the other nb_plot - 1 traces are simply the next ones in the traces IDs order.
+    nb_plot : int, optional
+        Number of different traces we want to subplot. The default is 5.
+    DD_on : bool, optional
+        1 if DD trace should be included, 0 to exclude
+    DA_on : bool, optional
+        1 if DA trace should be included, 0 to exclude
+    AA_on : bool, optional
+        1 if AA trace should be included, 0 to exclude
+    DD_DA_on : bool, optional
+        1 if DD + DA trace should be included, 0 to exclude
+
+    Returns
+    -------
+    None.
+
+    """
+    list_traces_IDs = list(traces_data.keys())
+    
+    fig, axs = plt.subplots(nb_plot)
+    fig.suptitle('Traces ' + list_traces_IDs[traces_ID] + ' to ' + list_traces_IDs[traces_ID + nb_plot - 1])
+    for k in range(nb_plot):
+        if DD_on == 1:
+            axs[k].plot(traces_data[list_traces_IDs[traces_ID + k]]['Intensity_DD'],color='orange');
+            axs[k].axvline(x = traces_data[list_traces_IDs[traces_ID + k]]['bleaching_event_DD'], color = 'orange', label = 'predicted breakpoint');
+        if DA_on == 1:
+            axs[k].plot(traces_data[list_traces_IDs[traces_ID + k]]['Intensity_DA'],color='red');
+        if AA_on == 1:
+            axs[k].plot(traces_data[list_traces_IDs[traces_ID + k]]['Intensity_AA'],color='gray');
+            axs[k].axvline(x = traces_data[list_traces_IDs[traces_ID + k]]['bleaching_event_AA'], color = 'gray', label = 'predicted breakpoint');
+        if DD_DA_on == 1:
+            axs[k].plot([i+j for i,j in zip(traces_data[list_traces_IDs[traces_ID + k]]['Intensity_DD'],traces_data[list_traces_IDs[traces_ID + k]]['Intensity_DA'])],color='blue');
+    fig.supxlabel('Absolute raw intensity')
+    fig.supylabel('Frames')
+    plt.show()
+    return
+
+
+def plot_Stoichio_FRETeff_2D_hist(traces_data, nb_bin = 100):
+    list_Eff_Stoichio = []
+    
+    for k in list(traces_data.keys()):
+        
+        bleach_event_DD = traces_data[k]['bleaching_event_DD']
+        bleach_event_AA = traces_data[k]['bleaching_event_AA']
+        end_trace = np.min((bleach_event_DD, bleach_event_AA))
+        
+        if end_trace > 0:
+        
+            DD_trace = np.array(traces_data[k]['Intensity_DD'][:end_trace])
+            DA_trace = np.array(traces_data[k]['Intensity_DA'][:end_trace])
+            AA_trace = np.array(traces_data[k]['Intensity_AA'][:end_trace])
+        
+        
+        
+            FRET_eff = DA_trace / (DD_trace + DA_trace)
+            FRET_stoichio = (DD_trace + DA_trace) / (DD_trace + DA_trace + AA_trace)
+            if len(list_Eff_Stoichio) == 0:
+                list_Eff_Stoichio = np.stack((FRET_eff, FRET_stoichio), axis = 1)
+            else:
+                list_Eff_Stoichio = np.concat((list_Eff_Stoichio, np.stack((FRET_eff, FRET_stoichio), axis = 1)))
+    
+    df_data = DF(data={'Fret_eff': list_Eff_Stoichio[:,0], 'stoichio': list_Eff_Stoichio[:,1]})
+    
+    jointplot(data=df_data, x="Fret_eff", y="stoichio",kind="hist", 
+              joint_kws={'cmap':'viridis'}, xlim=[0, 1], ylim=[0, 1],
+              marginal_kws=dict(bins=nb_bin))
+    
+    return
