@@ -10,6 +10,8 @@ import ruptures as rpt
 from scipy.ndimage import median_filter
 from chromatic_aberrations_correction import *
 from utils import *
+# from drift_correction import *
+import cv2
 
 
 def detect_spot(img_DD, img_DA, kernel_size=2, min_distance=2, proj_oper = 'sum', size_median_filt = 10):
@@ -135,7 +137,143 @@ def filter_close_prox_spots(coord_spots, min_dist = 7):
     # return the filtered spot coordinates
     return filter_coord_spots 
 
-def spot_trace_extractor(coord_spots, img_stack_D, file_path_D, img_stack_A, file_path_A, matrix_align, sigma = 2, DA_is = 'odd'):
+# def spot_trace_extractor(coord_spots, img_stack_D, file_path_D, img_stack_A, file_path_A, matrix_align, drift_correct = 0, sigma = 2, DA_is = 'odd'):
+#     """
+#     Function used to extract and concatenate the subtraces from DD, DA and AA channels from all submovies
+
+#     Parameters
+#     ----------
+#     coord_spots : Numpy array
+#         List of coordinates of the distance-filtered detected spots.
+#     img_stack_D : Numpy array
+#         First donor submovie as Numpy array.
+#     file_path_D : List of str
+#         List of paths of all donor submovies
+#     img_stack_A : Numpy array
+#         First acceptor submovie as Numpy array.
+#     file_path_A : List of str
+#         List of paths of all acceptor submovies
+#     matrix_align : list of arrays
+#         List of the optimized transformation matrix to use for the chromatic aberrations correction.
+#     sigma : int, optional
+#         radius in pixels of the area around a spot where to look for the intensity of the spot (so any slight drift or innacurate detection of the spot is handled).\
+#             Needs to be less than the minimal interspots distance. Default is 2.
+#     DA_is : str, optional
+#         'odd' if DA frames are the odd ones, anything else if there are the even ones
+
+#     Returns
+#     -------
+#     traces_data : dict
+#         Dictionnary containing all the traces for individual filtered spots, including DD, DA and AA traces; the keys of this dictionnary correspond to the individual traces ID\
+#         Each entry also contains the xy coordinates of the related spot. It doesn't include the frames for each timepoints, as we consider there are no skipped frames in the movies
+
+#     """
+#     print('Start of the traces extraction and concatenation step...')
+    
+#     # create a dict that will gather all traces and related analysis
+#     traces_data = {}
+    
+#     # define if DA channel is odd or even frames, default is odd, anything else is considered even
+#     if DA_is == 'odd':
+#         DA_start = 1
+#         AA_start = 0
+#     else:
+#         DA_start = 0
+#         AA_start = 1
+    
+#     print('Extracting traces from movie 0...')
+    
+#     # for the 1st submovie, loop over all detected spots and individually extract the DD, DA and AA subtraces
+#     for k in range(len(coord_spots)):
+        
+#         # crop the search area around the spot if it's at the corner of the image; xl, xr, yl and yr define the search aera corners coordinates
+#         xl = np.max([coord_spots[k,0]-sigma, 0])
+#         xr = np.min([coord_spots[k,0]+ sigma, img_stack_D.shape[0]])
+#         yu = np.max([coord_spots[k,1]-sigma, 0])
+#         yd = np.min([coord_spots[k,1]+ sigma, img_stack_D.shape[1]])
+        
+#         mask_spot_signal = generate_mask_background(coord_spots[k,:], xl, xr, yu, yd, img_stack_D.shape[2], mask_radius = sigma)
+#         area_mask =  np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
+#         #mask_spot_signal = mask_spot_signal / np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
+#         trace_DD = np.sum(np.sum(img_stack_D[xl:xr,yu:yd,:] * mask_spot_signal, axis = 0),axis=0)
+#         trace_DA = np.sum(np.sum(img_stack_A[xl:xr,yu:yd,[i for i in range(DA_start,img_stack_A.shape[2],2)]] * mask_spot_signal, axis = 0),axis=0)
+#         trace_AA = np.sum(np.sum(img_stack_A[xl:xr,yu:yd,[i for i in range(AA_start,img_stack_A.shape[2],2)]] * mask_spot_signal, axis = 0),axis=0)
+        
+#         # crop the search area around the spot if it's at the corner of the image; xl, xr, yl and yr define the search aera corners coordinates
+#         xl_back = np.max([coord_spots[k,0]-3*sigma, 0])
+#         xr_back = np.min([coord_spots[k,0]+ 3*sigma, img_stack_D.shape[0]])
+#         yu_back = np.max([coord_spots[k,1]-3*sigma, 0])
+#         yd_back = np.min([coord_spots[k,1]+ 3*sigma, img_stack_D.shape[1]])
+        
+#         # measure the background noise level around the spot using the median inside the search area with masked spot
+#         mask_spot_back = generate_mask_background(coord_spots[k,:], xl_back, xr_back, yu_back, yd_back, img_stack_D.shape[2], mask_radius = 3*sigma)
+#         back_trace_DD = np.median(np.median(img_stack_D[xl_back:xr_back,yu_back:yd_back,:] * mask_spot_back, axis = 0),axis=0)
+#         back_trace_DA = np.median(np.median(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(DA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
+#         back_trace_AA = np.median(np.median(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(AA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
+        
+#         # remove the background noise level from the signals
+#         corr_trace_DD = trace_DD - back_trace_DD * area_mask
+#         corr_trace_DA = trace_DA - back_trace_DA * area_mask
+#         corr_trace_AA = trace_AA - back_trace_AA * area_mask
+        
+#         # add a ney entry to the dict whose key is trace ID, and contains xy coordinates and subtraces for DD, DA and AA channels
+#         traces_data[str(k)] = {'x_coord': coord_spots[k,0], 'y_coord': coord_spots[k,1]}
+#         traces_data[str(k)]['Intensity_DD'] = np.round(corr_trace_DD,0).astype(np.int64)
+#         traces_data[str(k)]['Intensity_DA'] = np.round(corr_trace_DA,0).astype(np.int64)
+#         traces_data[str(k)]['Intensity_AA'] = np.round(corr_trace_AA,0).astype(np.int64)
+    
+#     # after extraction of the first submovie, loop over the next submovies until all have been processed, concatenate the subtraces to their corresponding traces ID inside the dict\
+#         # really similar to the previous section, with addition of a chromatic correction of the donor submovie
+#     for j in range(len(file_path_D)-1):
+#         print('Extracting traces from movie ' + str(j+1) + '...')
+        
+#         # correct chromatic aberrations donor submovie
+#         img_stack_D = generate_chrom_ab_corr_movie(load_submovies(file_path_D[j+1]), matrix_align)
+#         img_stack_A = load_submovies(file_path_A[j+1])
+        
+#         # loop of detected spots
+#         for k in range(len(coord_spots)):
+#             #search area corners management
+#             xl = np.max([coord_spots[k,0]-sigma, 0])
+#             xr = np.min([coord_spots[k,0]+ sigma, img_stack_D.shape[0]])
+#             yu = np.max([coord_spots[k,1]-sigma, 0])
+#             yd = np.min([coord_spots[k,1]+ sigma, img_stack_D.shape[1]])
+            
+#             # extraction of subtraces
+#             mask_spot_signal = generate_mask_background(coord_spots[k,:], xl, xr, yu, yd, img_stack_D.shape[2], mask_radius = sigma)
+#             area_mask =  np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
+#             #mask_spot_signal = mask_spot_signal / np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
+#             trace_DD = np.sum(np.sum(img_stack_D[xl:xr,yu:yd,:] * mask_spot_signal, axis = 0),axis=0)  # example
+#             trace_DA = np.sum(np.sum(img_stack_A[xl:xr,yu:yd,[i for i in range(DA_start,img_stack_A.shape[2],2)]] * mask_spot_signal, axis = 0),axis=0)
+#             trace_AA = np.sum(np.sum(img_stack_A[xl:xr,yu:yd,[i for i in range(AA_start,img_stack_A.shape[2],2)]] * mask_spot_signal, axis = 0),axis=0)
+            
+#             # crop the search area around the spot if it's at the corner of the image; xl, xr, yl and yr define the search aera corners coordinates
+#             xl_back = np.max([coord_spots[k,0]-3*sigma, 0])
+#             xr_back = np.min([coord_spots[k,0]+ 3*sigma, img_stack_D.shape[0]])
+#             yu_back = np.max([coord_spots[k,1]-3*sigma, 0])
+#             yd_back = np.min([coord_spots[k,1]+ 3*sigma, img_stack_D.shape[1]])
+            
+#             # measure the background noise level around the spot using the median inside the search area with masked spot
+#             mask_spot_back = generate_mask_background(coord_spots[k,:], xl_back, xr_back, yu_back, yd_back, img_stack_D.shape[2], mask_radius = 3*sigma)
+#             back_trace_DD = np.median(np.median(img_stack_D[xl_back:xr_back,yu_back:yd_back,:] * mask_spot_back, axis = 0),axis=0)
+#             back_trace_DA = np.median(np.median(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(DA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
+#             back_trace_AA = np.median(np.median(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(AA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
+            
+#             # remove the background noise level from the signals
+#             corr_trace_DD = trace_DD - back_trace_DD * area_mask
+#             corr_trace_DA = trace_DA - back_trace_DA * area_mask
+#             corr_trace_AA = trace_AA - back_trace_AA * area_mask
+            
+#             # concatenation of subtraces to their cooresponding trace ID
+#             traces_data[str(k)]['Intensity_DD'] = np.concat((traces_data[str(k)]['Intensity_DD'], np.round(corr_trace_DD,0).astype(np.int64)))
+#             traces_data[str(k)]['Intensity_DA'] = np.concat((traces_data[str(k)]['Intensity_DA'], np.round(corr_trace_DA,0).astype(np.int64)))
+#             traces_data[str(k)]['Intensity_AA'] = np.concat((traces_data[str(k)]['Intensity_AA'], np.round(corr_trace_AA,0).astype(np.int64)))
+            
+#     print('Traces extraction and concatenation completed!')
+    
+#     return traces_data
+
+def spot_trace_extractor(file_path_D, file_path_A, coord_spots, matrix_align, list_frames_drift_AA, drift_correct = 0, sigma = 3, DA_is = 'odd'):
     """
     Function used to extract and concatenate the subtraces from DD, DA and AA channels from all submovies
 
@@ -166,10 +304,15 @@ def spot_trace_extractor(coord_spots, img_stack_D, file_path_D, img_stack_A, fil
         Each entry also contains the xy coordinates of the related spot. It doesn't include the frames for each timepoints, as we consider there are no skipped frames in the movies
 
     """
+    
     print('Start of the traces extraction and concatenation step...')
     
     # create a dict that will gather all traces and related analysis
     traces_data = {}
+    
+    frame_sum = 0
+    
+    coord_spots_corr_DD = np.zeros(coord_spots.shape)
     
     # define if DA channel is odd or even frames, default is odd, anything else is considered even
     if DA_is == 'odd':
@@ -179,93 +322,147 @@ def spot_trace_extractor(coord_spots, img_stack_D, file_path_D, img_stack_A, fil
         DA_start = 0
         AA_start = 1
     
-    print('Extracting traces from movie 0...')
-    
-    # for the 1st submovie, loop over all detected spots and individually extract the DD, DA and AA subtraces
-    for k in range(len(coord_spots)):
-        
-        # crop the search area around the spot if it's at the corner of the image; xl, xr, yl and yr define the search aera corners coordinates
-        xl = np.max([coord_spots[k,0]-sigma, 0])
-        xr = np.min([coord_spots[k,0]+ sigma, img_stack_D.shape[0]])
-        yu = np.max([coord_spots[k,1]-sigma, 0])
-        yd = np.min([coord_spots[k,1]+ sigma, img_stack_D.shape[1]])
-        
-        mask_spot_signal = generate_mask_background(coord_spots[k,:], xl, xr, yu, yd, img_stack_D.shape[2], mask_radius = sigma)
-        area_mask =  np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
-        #mask_spot_signal = mask_spot_signal / np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
-        trace_DD = np.sum(np.sum(img_stack_D[xl:xr,yu:yd,:] * mask_spot_signal, axis = 0),axis=0)
-        trace_DA = np.sum(np.sum(img_stack_A[xl:xr,yu:yd,[i for i in range(DA_start,img_stack_A.shape[2],2)]] * mask_spot_signal, axis = 0),axis=0)
-        trace_AA = np.sum(np.sum(img_stack_A[xl:xr,yu:yd,[i for i in range(AA_start,img_stack_A.shape[2],2)]] * mask_spot_signal, axis = 0),axis=0)
-        
-        # crop the search area around the spot if it's at the corner of the image; xl, xr, yl and yr define the search aera corners coordinates
-        xl_back = np.max([coord_spots[k,0]-3*sigma, 0])
-        xr_back = np.min([coord_spots[k,0]+ 3*sigma, img_stack_D.shape[0]])
-        yu_back = np.max([coord_spots[k,1]-3*sigma, 0])
-        yd_back = np.min([coord_spots[k,1]+ 3*sigma, img_stack_D.shape[1]])
-        
-        # measure the background noise level around the spot using the median inside the search area with masked spot
-        mask_spot_back = generate_mask_background(coord_spots[k,:], xl_back, xr_back, yu_back, yd_back, img_stack_D.shape[2], mask_radius = 3*sigma)
-        back_trace_DD = np.median(np.median(img_stack_D[xl_back:xr_back,yu_back:yd_back,:] * mask_spot_back, axis = 0),axis=0)
-        back_trace_DA = np.median(np.median(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(DA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
-        back_trace_AA = np.median(np.median(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(AA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
-        
-        # remove the background noise level from the signals
-        corr_trace_DD = trace_DD - back_trace_DD * area_mask
-        corr_trace_DA = trace_DA - back_trace_DA * area_mask
-        corr_trace_AA = trace_AA - back_trace_AA * area_mask
-        
-        # add a ney entry to the dict whose key is trace ID, and contains xy coordinates and subtraces for DD, DA and AA channels
-        traces_data[str(k)] = {'x_coord': coord_spots[k,0], 'y_coord': coord_spots[k,1]}
-        traces_data[str(k)]['Intensity_DD'] = np.round(corr_trace_DD,0).astype(np.int64)
-        traces_data[str(k)]['Intensity_DA'] = np.round(corr_trace_DA,0).astype(np.int64)
-        traces_data[str(k)]['Intensity_AA'] = np.round(corr_trace_AA,0).astype(np.int64)
-    
     # after extraction of the first submovie, loop over the next submovies until all have been processed, concatenate the subtraces to their corresponding traces ID inside the dict\
         # really similar to the previous section, with addition of a chromatic correction of the donor submovie
-    for j in range(len(file_path_D)-1):
+    for j in range(len(file_path_D)):
         print('Extracting traces from movie ' + str(j+1) + '...')
         
         # correct chromatic aberrations donor submovie
-        img_stack_D = generate_chrom_ab_corr_movie(load_submovies(file_path_D[j+1]), matrix_align)
-        img_stack_A = load_submovies(file_path_A[j+1])
+        img_stack_D = generate_chrom_ab_corr_movie(load_submovies(file_path_D[j]), matrix_align)
+        img_stack_A = load_submovies(file_path_A[j])
+        
+        img_stack_D_proj = np.sum(img_stack_D, axis = 2)
+        
+        # if (j >= 1) and isinstance(drift_correct, pd.DataFrame):
+        #     M = np.float32([
+        #         [1.0, 0.0, -drift_correct['x'][j]],  # x' = x + 10.5
+        #         [0.0, 1.0, -drift_correct['y'][j]]   # y' = y + 20.3
+        #         ])
+        #     H, W = img_stack_D.shape[0:2]
+            
+        #     img_stack_D_i = np.zeros(img_stack_D.shape)
+        #     img_stack_A_i = np.zeros(img_stack_A.shape)
+            
+        #     length_DD = img_stack_D.shape[2]
+        #     length_DA = img_stack_A.shape[2]
+            
+        #     for m in range(1 + length_DD // 512):
+        #         img_stack_D_i[:,:,m*512:np.min((512*(m+1), length_DD))] = cv2.warpAffine(img_stack_D[:,:,m*512:np.min((512*(m+1), length_DD))], M, (W, H), flags=cv2.INTER_LINEAR)
+    
+        #     for m in range(1 + length_DA // 512):
+        #         img_stack_A_i[:,:,m*512:np.min((512*(m+1), length_DA))] = cv2.warpAffine(img_stack_A[:,:,m*512:np.min((512*(m+1), length_DA))], M, (W, H), flags=cv2.INTER_LINEAR)
+            
+        #     img_stack_D = img_stack_D_i
+        #     img_stack_A = img_stack_A_i
+        
+        
+    
+        
+        # drift_j = drift_correct[(list_frames_drift_AA[1:] < frame_sum + img_stack_D.shape[2]) & (list_frames_drift_AA[1:] >= frame_sum)]
+        if j == 0:
+            drift_j = [0, 0]
+        else:
+            # drift_j = [drift_correct[list_frames_drift_AA[1:] == frame_sum]['y'].values[0], drift_correct[list_frames_drift_AA[1:] == frame_sum]['x'].values[0]]
+            drift_j = [drift_correct['y'].values[j-1], drift_correct['x'].values[j-1]]
+        frame_sum = frame_sum + img_stack_D.shape[2]
         
         # loop of detected spots
         for k in range(len(coord_spots)):
             #search area corners management
-            xl = np.max([coord_spots[k,0]-sigma, 0])
-            xr = np.min([coord_spots[k,0]+ sigma, img_stack_D.shape[0]])
-            yu = np.max([coord_spots[k,1]-sigma, 0])
-            yd = np.min([coord_spots[k,1]+ sigma, img_stack_D.shape[1]])
+            coord_spot_A = np.round(coord_spots[k,:] + drift_j).astype(int)
+            xl = int(np.max([coord_spot_A[0]-sigma, 0]))
+            xr = int(np.min([coord_spot_A[0]+ sigma, img_stack_A.shape[0]]))
+            yu = int(np.max([coord_spot_A[1]-sigma, 0]))
+            yd = int(np.min([coord_spot_A[1]+ sigma, img_stack_A.shape[1]]))
+            
+            xl_back = int(np.max([coord_spot_A[0]-2*sigma, 0]))
+            xr_back = int(np.min([coord_spot_A[0]+ 2*sigma, img_stack_D.shape[0]]))
+            yu_back = int(np.max([coord_spot_A[1]-2*sigma, 0]))
+            yd_back = int(np.min([coord_spot_A[1]+ 2*sigma, img_stack_D.shape[1]]))
+            
+            xl_back_D_det = int(np.max([coord_spot_A[0]-20, 0]))
+            xr_back_D_det = int(np.min([coord_spot_A[0]+ 20, img_stack_D.shape[0]]))
+            yu_back_D_det = int(np.max([coord_spot_A[1]-20, 0]))
+            yd_back_D_det = int(np.min([coord_spot_A[1]+ 20, img_stack_D.shape[1]]))
+            
+            if j == 0:
+                # xc, yc = fit_Gauss_spot(img_stack_D[xl_back:xr_back,yu_back:yd_back,0], coord_spots[k,0]-xl_back, coord_spots[k,1]-yu_back)
+                # coord_spots_corr_DD[k,0] = xc + xl_back
+                # coord_spots_corr_DD[k,1] = yc + yu_back
+                img_spot = img_stack_D_proj[xl_back_D_det:xr_back_D_det,yu_back_D_det:yd_back_D_det]
+                try:
+                    coord_detec_D = detection.detect_spots(img_spot, log_kernel_size=2, minimum_distance=2)
+                    coord_spots_corr_DD[k,:] = coord_detec_D[np.argmin(np.sum((coord_spot_A-np.array([xl_back_D_det, yu_back_D_det])-coord_detec_D)**2, axis = 1))] + [xl_back_D_det, yu_back_D_det]
+                except ValueError:
+                    coord_spots_corr_DD[k,:] = coord_spot_A
+            
+            coord_spot_D =coord_spots_corr_DD[k,:] + drift_j
+            
+            xl_D = int(np.max([coord_spot_D[0]-sigma, 0]))
+            xr_D = int(np.min([coord_spot_D[0]+ sigma, img_stack_D.shape[0]]))
+            yu_D = int(np.max([coord_spot_D[1]-sigma, 0]))
+            yd_D = int(np.min([coord_spot_D[1]+ sigma, img_stack_D.shape[1]]))
+            
+            xl_back_D = int(np.max([coord_spot_D[0]-2*sigma, 0]))
+            xr_back_D = int(np.min([coord_spot_D[0]+ 2*sigma, img_stack_D.shape[0]]))
+            yu_back_D = int(np.max([coord_spot_D[1]-2*sigma, 0]))
+            yd_back_D = int(np.min([coord_spot_D[1]+ 2*sigma, img_stack_D.shape[1]]))
             
             # extraction of subtraces
-            mask_spot_signal = generate_mask_background(coord_spots[k,:], xl, xr, yu, yd, img_stack_D.shape[2], mask_radius = sigma)
+            mask_spot_signal = generate_mask_background(coord_spot_A, xl, xr, yu, yd, img_stack_D.shape[2], mask_radius = sigma)
             area_mask =  np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
+            
+            mask_spot_signal_D = generate_mask_background(coord_spot_D, xl_D, xr_D, yu_D, yd_D, img_stack_D.shape[2], mask_radius = sigma)
+            area_mask_D =  np.sum(np.sum(mask_spot_signal_D, axis = 0), axis = 0)
             #mask_spot_signal = mask_spot_signal / np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
-            trace_DD = np.sum(np.sum(img_stack_D[xl:xr,yu:yd,:] * mask_spot_signal, axis = 0),axis=0)  # example
+            trace_DD = np.sum(np.sum(img_stack_D[xl_D:xr_D,yu_D:yd_D,:] * mask_spot_signal_D, axis = 0),axis=0)  # example
             trace_DA = np.sum(np.sum(img_stack_A[xl:xr,yu:yd,[i for i in range(DA_start,img_stack_A.shape[2],2)]] * mask_spot_signal, axis = 0),axis=0)
             trace_AA = np.sum(np.sum(img_stack_A[xl:xr,yu:yd,[i for i in range(AA_start,img_stack_A.shape[2],2)]] * mask_spot_signal, axis = 0),axis=0)
             
             # crop the search area around the spot if it's at the corner of the image; xl, xr, yl and yr define the search aera corners coordinates
-            xl_back = np.max([coord_spots[k,0]-3*sigma, 0])
-            xr_back = np.min([coord_spots[k,0]+ 3*sigma, img_stack_D.shape[0]])
-            yu_back = np.max([coord_spots[k,1]-3*sigma, 0])
-            yd_back = np.min([coord_spots[k,1]+ 3*sigma, img_stack_D.shape[1]])
             
-            # measure the background noise level around the spot using the median inside the search area with masked spot
-            mask_spot_back = generate_mask_background(coord_spots[k,:], xl_back, xr_back, yu_back, yd_back, img_stack_D.shape[2], mask_radius = 3*sigma)
-            back_trace_DD = np.median(np.median(img_stack_D[xl_back:xr_back,yu_back:yd_back,:] * mask_spot_back, axis = 0),axis=0)
-            back_trace_DA = np.median(np.median(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(DA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
-            back_trace_AA = np.median(np.median(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(AA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
+            # measure the background noise level around the spot using the mean inside the search area with masked spot
+            mask_spot_back = generate_mask_background(coord_spot_A, xl_back, xr_back, yu_back, yd_back, img_stack_D.shape[2], mask_radius = 2*sigma)
+            mask_spot_back_center_spot = generate_mask_background(coord_spot_A, xl_back, xr_back, yu_back, yd_back, img_stack_D.shape[2], mask_radius = sigma)
+            mask_spot_back = mask_spot_back ^ mask_spot_back_center_spot # remove the spot signal part from the background mask, for more accurate background estimation
+            area_mask_back =  np.sum(np.sum(mask_spot_back, axis = 0), axis = 0)
+            
+            
+            mask_spot_back_D = generate_mask_background(coord_spot_D, xl_back_D, xr_back_D, yu_back_D, yd_back_D, img_stack_D.shape[2], mask_radius = 2*sigma)
+            mask_spot_back_center_spot_D = generate_mask_background(coord_spot_D, xl_back_D, xr_back_D, yu_back_D, yd_back_D, img_stack_D.shape[2], mask_radius = sigma)
+            mask_spot_back_D = mask_spot_back_D ^ mask_spot_back_center_spot_D # remove the spot signal part from the background mask, for more accurate background estimation
+            area_mask_back_D =  np.sum(np.sum(mask_spot_back_D, axis = 0), axis = 0)
+            # back_trace_DD = np.sum(np.sum(img_stack_D[xl_back:xr_back,yu_back:yd_back,:] * mask_spot_back, axis = 0),axis=0)
+            # back_trace_DA = np.sum(np.sum(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(DA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
+            # back_trace_AA = np.sum(np.sum(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(AA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
+            
+            #dim0_back_mask = img_stack_D[xl_back:xr_back,yu_back:yd_back,:].shape[0]
+            #dim1_back_mask = img_stack_D[xl_back:xr_back,yu_back:yd_back,:].shape[1]
+            dim2_back_mask = img_stack_D[xl_back:xr_back,yu_back:yd_back,:].shape[2]
+            
+            img_stack_D_spot = img_stack_D[xl_back_D:xr_back_D,yu_back_D:yd_back_D,:]
+            img_stack_DA_spot = img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(DA_start,img_stack_A.shape[2],2)]]
+            img_stack_AA_spot = img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(AA_start,img_stack_A.shape[2],2)]]
+            
+            back_trace_DD = np.median(img_stack_D_spot[mask_spot_back_D].reshape((area_mask_back_D[0], dim2_back_mask)), axis = 0)
+            back_trace_DA = np.median(img_stack_DA_spot[mask_spot_back].reshape((area_mask_back[0], dim2_back_mask)), axis = 0)
+            back_trace_AA = np.median(img_stack_AA_spot[mask_spot_back].reshape((area_mask_back[0], dim2_back_mask)), axis = 0)
             
             # remove the background noise level from the signals
-            corr_trace_DD = trace_DD - back_trace_DD * area_mask
-            corr_trace_DA = trace_DA - back_trace_DA * area_mask
-            corr_trace_AA = trace_AA - back_trace_AA * area_mask
+            corr_trace_DD = trace_DD - back_trace_DD * area_mask_D #/ area_mask_back
+            corr_trace_DA = trace_DA - back_trace_DA * area_mask #/ area_mask_back
+            corr_trace_AA = trace_AA - back_trace_AA * area_mask #/ area_mask_back
             
+            if j == 0:
+                traces_data[str(k)] = {'x_coord': coord_spots[k,0], 'y_coord': coord_spots[k,1]}
+                traces_data[str(k)]['Intensity_DD'] = np.round(corr_trace_DD,0).astype(np.int64)
+                traces_data[str(k)]['Intensity_DA'] = np.round(corr_trace_DA,0).astype(np.int64)
+                traces_data[str(k)]['Intensity_AA'] = np.round(corr_trace_AA,0).astype(np.int64)
+            else:
             # concatenation of subtraces to their cooresponding trace ID
-            traces_data[str(k)]['Intensity_DD'] = np.concat((traces_data[str(k)]['Intensity_DD'], np.round(corr_trace_DD,0).astype(np.int64)))
-            traces_data[str(k)]['Intensity_DA'] = np.concat((traces_data[str(k)]['Intensity_DA'], np.round(corr_trace_DA,0).astype(np.int64)))
-            traces_data[str(k)]['Intensity_AA'] = np.concat((traces_data[str(k)]['Intensity_AA'], np.round(corr_trace_AA,0).astype(np.int64)))
+                traces_data[str(k)]['Intensity_DD'] = np.concat((traces_data[str(k)]['Intensity_DD'], np.round(corr_trace_DD,0).astype(np.int64)))
+                traces_data[str(k)]['Intensity_DA'] = np.concat((traces_data[str(k)]['Intensity_DA'], np.round(corr_trace_DA,0).astype(np.int64)))
+                traces_data[str(k)]['Intensity_AA'] = np.concat((traces_data[str(k)]['Intensity_AA'], np.round(corr_trace_AA,0).astype(np.int64)))
             
     print('Traces extraction and concatenation completed!')
     
@@ -399,7 +596,14 @@ def get_SNR(traces_data):
    
     print('SNR calculation step completed!')
     return traces_data
-    
+
+def get_high_signal(traces_data):
+    for i in range(len(traces_data)):
+        max_trace_i = np.max(traces_data[str(i)]['Intensity_DA'])
+        traces_data[str(i)]['SNR_DA'] = max_trace_i
+        traces_data[str(i)]['SNR_DD'] = max_trace_i
+        traces_data[str(i)]['SNR_AA'] = max_trace_i
+    return traces_data
 
 def filter_traces_on_SNR(traces_data, SNR_thresh = 8):
     """
@@ -439,4 +643,397 @@ def filter_traces_on_SNR(traces_data, SNR_thresh = 8):
     print('High SNR traces filter step completed!')
     
     return traces_high_SNR, list_index_high_SNR
+
+
+
+def spot_trace_extractor_no_ALEX(file_path_D, file_path_A, coord_spots, matrix_align, drift_correct = 0, sigma = 2):
+    """
+    Function used to extract and concatenate the subtraces from DD, DA and AA channels from all submovies
+
+    Parameters
+    ----------
+    coord_spots : Numpy array
+        List of coordinates of the distance-filtered detected spots.
+    img_stack_D : Numpy array
+        First donor submovie as Numpy array.
+    file_path_D : List of str
+        List of paths of all donor submovies
+    img_stack_A : Numpy array
+        First acceptor submovie as Numpy array.
+    file_path_A : List of str
+        List of paths of all acceptor submovies
+    matrix_align : list of arrays
+        List of the optimized transformation matrix to use for the chromatic aberrations correction.
+    sigma : int, optional
+        radius in pixels of the area around a spot where to look for the intensity of the spot (so any slight drift or innacurate detection of the spot is handled).\
+            Needs to be less than the minimal interspots distance. Default is 2.
+    DA_is : str, optional
+        'odd' if DA frames are the odd ones, anything else if there are the even ones
+
+    Returns
+    -------
+    traces_data : dict
+        Dictionnary containing all the traces for individual filtered spots, including DD, DA and AA traces; the keys of this dictionnary correspond to the individual traces ID\
+        Each entry also contains the xy coordinates of the related spot. It doesn't include the frames for each timepoints, as we consider there are no skipped frames in the movies
+
+    """
     
+    print('Start of the traces extraction and concatenation step...')
+    
+    # create a dict that will gather all traces and related analysis
+    traces_data = {}
+    
+    # after extraction of the first submovie, loop over the next submovies until all have been processed, concatenate the subtraces to their corresponding traces ID inside the dict\
+        # really similar to the previous section, with addition of a chromatic correction of the donor submovie
+    for j in range(len(file_path_D)):
+        print('Extracting traces from movie ' + str(j+1) + '...')
+        
+        # correct chromatic aberrations donor submovie
+        img_stack_D = generate_chrom_ab_corr_movie(load_submovies(file_path_D[j]), matrix_align)
+        img_stack_A = load_submovies(file_path_A[j])
+        
+        if (j >= 1) and isinstance(drift_correct, pd.DataFrame):
+            M = np.float32([
+                [1.0, 0.0, -drift_correct['x'][j]],  # x' = x + 10.5
+                [0.0, 1.0, -drift_correct['y'][j]]   # y' = y + 20.3
+                ])
+            H, W = img_stack_D.shape[0:2]
+            
+            img_stack_D_i = np.zeros(img_stack_D.shape)
+            img_stack_A_i = np.zeros(img_stack_A.shape)
+            
+            length_DD = img_stack_D.shape[2]
+            length_DA = img_stack_A.shape[2]
+            
+            for m in range(1 + length_DD // 512):
+                img_stack_D_i[:,:,m*512:np.min((512*(m+1), length_DD))] = cv2.warpAffine(img_stack_D[:,:,m*512:np.min((512*(m+1), length_DD))], M, (W, H), flags=cv2.INTER_LINEAR)
+    
+            for m in range(1 + length_DA // 512):
+                img_stack_A_i[:,:,m*512:np.min((512*(m+1), length_DA))] = cv2.warpAffine(img_stack_A[:,:,m*512:np.min((512*(m+1), length_DA))], M, (W, H), flags=cv2.INTER_LINEAR)
+            
+            img_stack_D = img_stack_D_i
+            img_stack_A = img_stack_A_i
+        # loop of detected spots
+        for k in range(len(coord_spots)):
+            #search area corners management
+            xl = int(np.max([coord_spots[k,0]-sigma, 0]))
+            xr = int(np.min([coord_spots[k,0]+ sigma, img_stack_D.shape[0]]))
+            yu = int(np.max([coord_spots[k,1]-sigma, 0]))
+            yd = int(np.min([coord_spots[k,1]+ sigma, img_stack_D.shape[1]]))
+            
+            # extraction of subtraces
+            mask_spot_signal = generate_mask_background(coord_spots[k,:], xl, xr, yu, yd, img_stack_D.shape[2], mask_radius = sigma)
+            area_mask =  np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
+            #mask_spot_signal = mask_spot_signal / np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
+            trace_DD = np.sum(np.sum(img_stack_D[xl:xr,yu:yd,:] * mask_spot_signal, axis = 0),axis=0)  # example
+            trace_DA = np.sum(np.sum(img_stack_A[xl:xr,yu:yd,:] * mask_spot_signal, axis = 0),axis=0)
+            
+            # crop the search area around the spot if it's at the corner of the image; xl, xr, yl and yr define the search aera corners coordinates
+            xl_back = int(np.max([coord_spots[k,0]-2*sigma, 0]))
+            xr_back = int(np.min([coord_spots[k,0]+ 2*sigma, img_stack_D.shape[0]]))
+            yu_back = int(np.max([coord_spots[k,1]-2*sigma, 0]))
+            yd_back = int(np.min([coord_spots[k,1]+ 2*sigma, img_stack_D.shape[1]]))
+            
+            # measure the background noise level around the spot using the mean inside the search area with masked spot
+            mask_spot_back = generate_mask_background(coord_spots[k,:], xl_back, xr_back, yu_back, yd_back, img_stack_D.shape[2], mask_radius = 2*sigma)
+            mask_spot_back_center_spot = generate_mask_background(coord_spots[k,:], xl_back, xr_back, yu_back, yd_back, img_stack_D.shape[2], mask_radius = sigma)
+            mask_spot_back = mask_spot_back ^ mask_spot_back_center_spot # remove the spot signal part from the background mask, for more accurate background estimation
+            area_mask_back =  np.sum(np.sum(mask_spot_back, axis = 0), axis = 0)
+            # back_trace_DD = np.sum(np.sum(img_stack_D[xl_back:xr_back,yu_back:yd_back,:] * mask_spot_back, axis = 0),axis=0)
+            # back_trace_DA = np.sum(np.sum(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(DA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
+            # back_trace_AA = np.sum(np.sum(img_stack_A[xl_back:xr_back,yu_back:yd_back,[i for i in range(AA_start,img_stack_A.shape[2],2)]] * mask_spot_back, axis = 0),axis=0)
+            
+            dim0_back_mask = img_stack_D[xl_back:xr_back,yu_back:yd_back,:].shape[0]
+            dim1_back_mask = img_stack_D[xl_back:xr_back,yu_back:yd_back,:].shape[1]
+            dim2_back_mask = img_stack_D[xl_back:xr_back,yu_back:yd_back,:].shape[2]
+            
+            img_stack_D_spot = img_stack_D[xl_back:xr_back,yu_back:yd_back,:]
+            img_stack_DA_spot = img_stack_A[xl_back:xr_back,yu_back:yd_back,:]
+            
+            back_trace_DD = np.median(img_stack_D_spot[mask_spot_back].reshape((area_mask_back[0], dim2_back_mask)), axis = 0)
+            back_trace_DA = np.median(img_stack_DA_spot[mask_spot_back].reshape((area_mask_back[0], dim2_back_mask)), axis = 0)
+            
+            # remove the background noise level from the signals
+            corr_trace_DD = trace_DD - back_trace_DD * area_mask #/ area_mask_back
+            corr_trace_DA = trace_DA - back_trace_DA * area_mask #/ area_mask_back
+            
+            if j == 0:
+                traces_data[str(k)] = {'x_coord': coord_spots[k,0], 'y_coord': coord_spots[k,1]}
+                traces_data[str(k)]['Intensity_DD'] = np.round(corr_trace_DD,0).astype(np.int64)
+                traces_data[str(k)]['Intensity_DA'] = np.round(corr_trace_DA,0).astype(np.int64)
+            else:
+            # concatenation of subtraces to their cooresponding trace ID
+                traces_data[str(k)]['Intensity_DD'] = np.concat((traces_data[str(k)]['Intensity_DD'], np.round(corr_trace_DD,0).astype(np.int64)))
+                traces_data[str(k)]['Intensity_DA'] = np.concat((traces_data[str(k)]['Intensity_DA'], np.round(corr_trace_DA,0).astype(np.int64)))
+            
+    print('Traces extraction and concatenation completed!')
+    
+    return traces_data
+
+def shift_peak(img, shift_YX):
+    M = np.float32([
+        [1.0, 0.0, -shift_YX[1]],  # x' = x + 10.5
+        [0.0, 1.0, -shift_YX[0]]   # y' = y + 20.3
+        ])
+    H, W = img.shape[0:2]
+    
+    img_i = np.zeros(img.shape)
+    
+    length_img = img.shape[2]
+    
+    for m in range(1 + length_img // 512):
+        img_i[:,:,m*512:np.min((512*(m+1), length_img))] = cv2.warpAffine(img[:,:,m*512:np.min((512*(m+1), length_img))], M, (W, H)) #, flags=cv2.INTER_LINEAR)
+    
+    return img_i
+
+def spot_trace_extractor_syn_movie(movie_syn, coord_spots, drift_correct, sigma = 3):
+    """
+    Function used to extract and concatenate the subtraces from DD, DA and AA channels from all submovies
+
+    Parameters
+    ----------
+    coord_spots : Numpy array
+        List of coordinates of the distance-filtered detected spots.
+    img_stack_D : Numpy array
+        First donor submovie as Numpy array.
+    file_path_D : List of str
+        List of paths of all donor submovies
+    img_stack_A : Numpy array
+        First acceptor submovie as Numpy array.
+    file_path_A : List of str
+        List of paths of all acceptor submovies
+    matrix_align : list of arrays
+        List of the optimized transformation matrix to use for the chromatic aberrations correction.
+    sigma : int, optional
+        radius in pixels of the area around a spot where to look for the intensity of the spot (so any slight drift or innacurate detection of the spot is handled).\
+            Needs to be less than the minimal interspots distance. Default is 2.
+    DA_is : str, optional
+        'odd' if DA frames are the odd ones, anything else if there are the even ones
+
+    Returns
+    -------
+    traces_data : dict
+        Dictionnary containing all the traces for individual filtered spots, including DD, DA and AA traces; the keys of this dictionnary correspond to the individual traces ID\
+        Each entry also contains the xy coordinates of the related spot. It doesn't include the frames for each timepoints, as we consider there are no skipped frames in the movies
+
+    """
+    
+    print('Start of the traces extraction and concatenation step...')
+    
+    # create a dict that will gather all traces and related analysis
+    traces_data = {}
+    
+    # define if DA channel is odd or even frames, default is odd, anything else is considered even
+    
+    # after extraction of the first submovie, loop over the next submovies until all have been processed, concatenate the subtraces to their corresponding traces ID inside the dict\
+        # really similar to the previous section, with addition of a chromatic correction of the donor submovie
+    for j in range(movie_syn.shape[2]):
+        print('Extracting traces from movie ' + str(j+1) + '...')
+        if j == 0:
+            drift_j = [0, 0]
+        else:
+            # drift_j = [drift_correct[list_frames_drift_AA[1:] == frame_sum]['y'].values[0], drift_correct[list_frames_drift_AA[1:] == frame_sum]['x'].values[0]]
+            drift_j = [drift_correct['y'].values[j-1], drift_correct['x'].values[j-1]]
+        
+        # loop of detected spots
+        for k in range(len(coord_spots)):
+            #search area corners management
+            coord_spot_A = np.round(coord_spots[k,:] + drift_j).astype(int)  # should be +
+            if coord_spot_A[0] < 0:
+                coord_spot_A[0] = 0
+            if coord_spot_A[1] < 0:
+                coord_spot_A[1] = 0    
+            xl = int(np.max([coord_spot_A[0]-sigma, 0]))
+            xr = int(np.min([coord_spot_A[0]+ sigma, movie_syn.shape[0]]))
+            yu = int(np.max([coord_spot_A[1]-sigma, 0]))
+            yd = int(np.min([coord_spot_A[1]+ sigma, movie_syn.shape[1]]))
+            
+            xl_back = int(np.max([coord_spot_A[0]-2*sigma, 0]))
+            xr_back = int(np.min([coord_spot_A[0]+ 2*sigma, movie_syn.shape[0]]))
+            yu_back = int(np.max([coord_spot_A[1]-2*sigma, 0]))
+            yd_back = int(np.min([coord_spot_A[1]+ 2*sigma, movie_syn.shape[1]]))
+            
+            
+            # extraction of subtraces
+            mask_spot_signal = generate_mask_background(coord_spot_A, xl, xr, yu, yd, 1, mask_radius = sigma)
+            mask_spot_signal = mask_spot_signal[:,:,0]
+            area_mask =  np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
+            #mask_spot_signal = mask_spot_signal / np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
+            trace_syn = np.sum(np.sum(movie_syn[xl:xr,yu:yd,j] * mask_spot_signal, axis = 0),axis=0)  # example
+            
+            # crop the search area around the spot if it's at the corner of the image; xl, xr, yl and yr define the search aera corners coordinates
+            
+            # measure the background noise level around the spot using the mean inside the search area with masked spot
+            mask_spot_back = generate_mask_background(coord_spot_A, xl_back, xr_back, yu_back, yd_back, 1, mask_radius = 2*sigma)
+            mask_spot_back = mask_spot_back[:,:,0]
+            mask_spot_back_center_spot = generate_mask_background(coord_spot_A, xl_back, xr_back, yu_back, yd_back, 1, mask_radius = sigma)
+            mask_spot_back_center_spot = mask_spot_back_center_spot[:,:,0]
+            mask_spot_back = mask_spot_back ^ mask_spot_back_center_spot # remove the spot signal part from the background mask, for more accurate background estimation
+            area_mask_back =  np.sum(np.sum(mask_spot_back, axis = 0), axis = 0)
+            
+            
+            dim2_back_mask = 1
+            
+            img_stack_syn_spot = movie_syn[xl_back:xr_back,yu_back:yd_back,j]
+            
+            back_trace_syn = np.median(img_stack_syn_spot[mask_spot_back])
+            
+            # remove the background noise level from the signals
+            corr_trace_syn = [trace_syn - back_trace_syn * area_mask] #/ area_mask_back
+            
+            if j == 0:
+                traces_data[str(k)] = {'x_coord': coord_spots[k,0], 'y_coord': coord_spots[k,1]}
+                traces_data[str(k)]['Intensity_DD'] = np.round(corr_trace_syn,0).astype(np.int64)
+                traces_data[str(k)]['Intensity_DA'] = np.round(corr_trace_syn,0).astype(np.int64)
+                traces_data[str(k)]['Intensity_AA'] = np.round(corr_trace_syn,0).astype(np.int64)
+            else:
+            # concatenation of subtraces to their cooresponding trace ID
+                traces_data[str(k)]['Intensity_DD'] = np.concat((traces_data[str(k)]['Intensity_DD'], np.round(corr_trace_syn,0).astype(np.int64)))
+                traces_data[str(k)]['Intensity_DA'] = np.concat((traces_data[str(k)]['Intensity_DA'], np.round(corr_trace_syn,0).astype(np.int64)))
+                traces_data[str(k)]['Intensity_AA'] = np.concat((traces_data[str(k)]['Intensity_AA'], np.round(corr_trace_syn,0).astype(np.int64)))
+            
+    print('Traces extraction and concatenation completed!')
+    
+    return traces_data
+
+def extract_traces_from_DD_spots(file_path_D, file_path_A, coord_spots, matrix_align, list_frames_drift_AA, drift_correct = 0, sigma = 3, DA_is = 'odd'):
+    traces_data = {}
+    
+    frame_sum = 0
+    
+    coord_3D = np.stack((coord_spots[:,1], coord_spots[:,0], np.ones(len(coord_spots))))
+    
+    img_temp = Image.open(file_path_D[0])
+    
+    H, W = img_temp.height, img_temp.width
+    
+    omega = generate_trans_matrix(matrix_align, H, W)
+    
+    coord_3D_corr = omega @ coord_3D
+    
+    coord_spots = np.array([coord_3D_corr[1,:], coord_3D_corr[0,:]]).T
+    
+    mask = ~np.any(coord_spots <= 0, axis=1)
+    coord_spots = coord_spots[mask]
+    
+    coord_spots_corr_A = np.zeros(coord_spots.shape)
+    
+    # define if DA channel is odd or even frames, default is odd, anything else is considered even
+    if DA_is == 'odd':
+        DA_start = 1
+        AA_start = 0
+    else:
+        DA_start = 0
+        AA_start = 1
+    
+    # after extraction of the first submovie, loop over the next submovies until all have been processed, concatenate the subtraces to their corresponding traces ID inside the dict\
+        # really similar to the previous section, with addition of a chromatic correction of the donor submovie
+    for j in range(len(file_path_D)):
+        print('Extracting traces from movie ' + str(j+1) + '...')
+        
+        # correct chromatic aberrations donor submovie
+        img_stack_D = generate_chrom_ab_corr_movie(load_submovies(file_path_D[j]), matrix_align)
+        img_stack_A = load_submovies(file_path_A[j])
+        
+        img_stack_A_proj = np.sum(img_stack_A[:,:,[i for i in range(DA_start,img_stack_A.shape[2],2)]], axis = 2)
+                               
+        if j == 0:
+            drift_j = [0, 0]
+        else:
+            # drift_j = [drift_correct[list_frames_drift_AA[1:] == frame_sum]['y'].values[0], drift_correct[list_frames_drift_AA[1:] == frame_sum]['x'].values[0]]
+            drift_j = [drift_correct['y'].values[j-1], drift_correct['x'].values[j-1]]
+        frame_sum = frame_sum + img_stack_D.shape[2]
+        
+        # loop of detected spots
+        for k in range(len(coord_spots)):
+            #search area corners management
+            coord_spot_D = np.round(coord_spots[k,:] + drift_j).astype(int)
+            xl = int(np.max([coord_spot_D[0]-sigma, 0]))
+            xr = int(np.min([coord_spot_D[0]+ sigma, img_stack_D.shape[0]]))
+            yu = int(np.max([coord_spot_D[1]-sigma, 0]))
+            yd = int(np.min([coord_spot_D[1]+ sigma, img_stack_D.shape[1]]))
+            
+            xl_back = int(np.max([coord_spot_D[0]-2*sigma, 0]))
+            xr_back = int(np.min([coord_spot_D[0]+ 2*sigma, img_stack_D.shape[0]]))
+            yu_back = int(np.max([coord_spot_D[1]-2*sigma, 0]))
+            yd_back = int(np.min([coord_spot_D[1]+ 2*sigma, img_stack_D.shape[1]]))
+            
+            xl_back_A_det = int(np.max([coord_spot_D[0]-20, 0]))
+            xr_back_A_det = int(np.min([coord_spot_D[0]+ 20, img_stack_D.shape[0]]))
+            yu_back_A_det = int(np.max([coord_spot_D[1]-20, 0]))
+            yd_back_A_det = int(np.min([coord_spot_D[1]+ 20, img_stack_D.shape[1]]))
+            
+            if j == 0:
+                img_spot = img_stack_A_proj[xl_back_A_det:xr_back_A_det,yu_back_A_det:yd_back_A_det]
+                try:
+                    coord_detec_A = detection.detect_spots(img_spot, log_kernel_size=2, minimum_distance=2)
+                    coord_spots_corr_A[k,:] = coord_detec_A[np.argmin(np.sum((coord_spot_D-np.array([xl_back_A_det, yu_back_A_det])-coord_detec_A)**2, axis = 1))] + [xl_back_A_det, yu_back_A_det]
+                except ValueError:
+                    coord_spots_corr_A[k,:] = coord_spot_D
+            
+            coord_spot_A =coord_spots_corr_A[k,:] + drift_j
+            
+            xl_A = int(np.max([coord_spot_A[0]-sigma, 0]))
+            xr_A = int(np.min([coord_spot_A[0]+ sigma, img_stack_A.shape[0]]))
+            yu_A = int(np.max([coord_spot_A[1]-sigma, 0]))
+            yd_A = int(np.min([coord_spot_A[1]+ sigma, img_stack_A.shape[1]]))
+            
+            xl_back_A = int(np.max([coord_spot_A[0]-2*sigma, 0]))
+            xr_back_A = int(np.min([coord_spot_A[0]+ 2*sigma, img_stack_A.shape[0]]))
+            yu_back_A = int(np.max([coord_spot_A[1]-2*sigma, 0]))
+            yd_back_A = int(np.min([coord_spot_A[1]+ 2*sigma, img_stack_A.shape[1]]))
+            
+            # extraction of subtraces
+            mask_spot_signal = generate_mask_background(coord_spot_D, xl, xr, yu, yd, img_stack_D.shape[2], mask_radius = sigma)
+            area_mask =  np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
+            
+            mask_spot_signal_A = generate_mask_background(coord_spot_A, xl_A, xr_A, yu_A, yd_A, img_stack_D.shape[2], mask_radius = sigma)
+            area_mask_A =  np.sum(np.sum(mask_spot_signal_A, axis = 0), axis = 0)
+            #mask_spot_signal = mask_spot_signal / np.sum(np.sum(mask_spot_signal, axis = 0), axis = 0)
+            trace_DD = np.sum(np.sum(img_stack_D[xl:xr,yu:yd,:] * mask_spot_signal, axis = 0),axis=0)  # example
+            trace_DA = np.sum(np.sum(img_stack_A[xl_A:xr_A,yu_A:yd_A,[i for i in range(DA_start,img_stack_A.shape[2],2)]] * mask_spot_signal_A, axis = 0),axis=0)
+            trace_AA = np.sum(np.sum(img_stack_A[xl_A:xr_A,yu_A:yd_A,[i for i in range(AA_start,img_stack_A.shape[2],2)]] * mask_spot_signal_A, axis = 0),axis=0)
+            
+            # crop the search area around the spot if it's at the corner of the image; xl, xr, yl and yr define the search aera corners coordinates
+            
+            # measure the background noise level around the spot using the mean inside the search area with masked spot
+            mask_spot_back = generate_mask_background(coord_spot_D, xl_back, xr_back, yu_back, yd_back, img_stack_D.shape[2], mask_radius = 2*sigma)
+            mask_spot_back_center_spot = generate_mask_background(coord_spot_D, xl_back, xr_back, yu_back, yd_back, img_stack_D.shape[2], mask_radius = sigma)
+            mask_spot_back = mask_spot_back ^ mask_spot_back_center_spot # remove the spot signal part from the background mask, for more accurate background estimation
+            area_mask_back =  np.sum(np.sum(mask_spot_back, axis = 0), axis = 0)
+            
+            
+            mask_spot_back_A = generate_mask_background(coord_spot_A, xl_back_A, xr_back_A, yu_back_A, yd_back_A, img_stack_D.shape[2], mask_radius = 2*sigma)
+            mask_spot_back_center_spot_A = generate_mask_background(coord_spot_A, xl_back_A, xr_back_A, yu_back_A, yd_back_A, img_stack_D.shape[2], mask_radius = sigma)
+            mask_spot_back_A = mask_spot_back_A ^ mask_spot_back_center_spot_A # remove the spot signal part from the background mask, for more accurate background estimation
+            area_mask_back_A =  np.sum(np.sum(mask_spot_back_A, axis = 0), axis = 0)
+
+            dim2_back_mask = img_stack_D[xl_back:xr_back,yu_back:yd_back,:].shape[2]
+            
+            img_stack_D_spot = img_stack_D[xl_back:xr_back,yu_back:yd_back,:]
+            img_stack_DA_spot = img_stack_A[xl_back_A:xr_back_A,yu_back_A:yd_back_A,[i for i in range(DA_start,img_stack_A.shape[2],2)]]
+            img_stack_AA_spot = img_stack_A[xl_back_A:xr_back_A,yu_back_A:yd_back_A,[i for i in range(AA_start,img_stack_A.shape[2],2)]]
+            
+            back_trace_DD = np.median(img_stack_D_spot[mask_spot_back].reshape((area_mask_back[0], dim2_back_mask)), axis = 0)
+            back_trace_DA = np.median(img_stack_DA_spot[mask_spot_back_A].reshape((area_mask_back_A[0], dim2_back_mask)), axis = 0)
+            back_trace_AA = np.median(img_stack_AA_spot[mask_spot_back_A].reshape((area_mask_back_A[0], dim2_back_mask)), axis = 0)
+            
+            # remove the background noise level from the signals
+            corr_trace_DD = trace_DD - back_trace_DD * area_mask #/ area_mask_back
+            corr_trace_DA = trace_DA - back_trace_DA * area_mask_A #/ area_mask_back
+            corr_trace_AA = trace_AA - back_trace_AA * area_mask_A #/ area_mask_back
+            
+            if j == 0:
+                traces_data[str(k)] = {'x_coord': coord_spots[k,0], 'y_coord': coord_spots[k,1]}
+                traces_data[str(k)]['Intensity_DD'] = np.round(corr_trace_DD,0).astype(np.int64)
+                traces_data[str(k)]['Intensity_DA'] = np.round(corr_trace_DA,0).astype(np.int64)
+                traces_data[str(k)]['Intensity_AA'] = np.round(corr_trace_AA,0).astype(np.int64)
+            else:
+            # concatenation of subtraces to their cooresponding trace ID
+                traces_data[str(k)]['Intensity_DD'] = np.concat((traces_data[str(k)]['Intensity_DD'], np.round(corr_trace_DD,0).astype(np.int64)))
+                traces_data[str(k)]['Intensity_DA'] = np.concat((traces_data[str(k)]['Intensity_DA'], np.round(corr_trace_DA,0).astype(np.int64)))
+                traces_data[str(k)]['Intensity_AA'] = np.concat((traces_data[str(k)]['Intensity_AA'], np.round(corr_trace_AA,0).astype(np.int64)))
+            
+    print('Traces extraction and concatenation completed!')
+    
+    return traces_data

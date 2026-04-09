@@ -14,6 +14,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from matplotlib.widgets import RectangleSelector
 from PIL import Image, ImageTk
 from tifffile import TiffFile, imread
+from GUI_HMM_utils import *
 
 class TimeSeriesViewer(tk.Tk):
     def __init__(self):   # def __init__(self, data_dict):
@@ -21,8 +22,11 @@ class TimeSeriesViewer(tk.Tk):
         self.title("Traces viewer")
         self.state('zoomed')
         self.data_dict = {}
+        self.HMM_predict_dict = {}
         self.current_slice = 0
         self.num_slices = 0
+        
+        self.HMM_predict = None
         
         self.data_dict_selected = {}
         
@@ -160,6 +164,8 @@ class TimeSeriesViewer(tk.Tk):
         self.entry.grid(row=1, column=2)
         filter_button = tk.Button(frame, text="Filter", command=self.filter_dictionary)
         filter_button.grid(row=1, column=3)
+        HMM_button = tk.Button(frame, text="HMM", command=self.HMM_call)
+        HMM_button.grid(row=2, column=3)
         
         separator = ttk.Separator(frame, orient='vertical')
         separator.grid(row=0, column=5, sticky="ns", padx=10, rowspan=4)
@@ -354,6 +360,13 @@ class TimeSeriesViewer(tk.Tk):
         if self.choicebreak.get() == 1:
             ax[1].axvline(x = self.data_dict[series_name].get('bleaching_event_DD'), color = 'orange', label = 'Donor bleaching', ls='--');
             ax[1].axvline(x = self.data_dict[series_name].get('bleaching_event_AA'), color = 'gray', label = 'Acceptor bleaching', ls='--');
+        #if self.HMM_predict_dict[series_name] is not None:
+        if series_name in list(self.HMM_predict_dict.keys()):
+            HMM_seq = self.HMM_predict_dict[series_name]
+            factor_HMM = np.max([data_DD, data_DA])
+            ax[0].plot(factor_HMM*HMM_seq[:int(len(HMM_seq)*factor)], 'green', label='HMM predict')
+            ax[1].plot(factor_HMM*HMM_seq, 'green', label='HMM predict')
+            
         ax[0].set_title(f"Time Series: {series_name}")
         ax[1].set_xlabel("Time")
         ax[0].set_ylabel("Intensity")
@@ -452,6 +465,13 @@ class TimeSeriesViewer(tk.Tk):
             self.choice_trace.set(1)
         else:
             self.choice_trace.set(0)
+    def HMM_call(self):
+        series_name = self.series_var.get()
+        DD_channel = self.data_dict[series_name].get('Intensity_DD')
+        DA_channel = self.data_dict[series_name].get('Intensity_DA')
+        self.HMM_predict = TbT_init(DD_channel, DA_channel, nb_hidden_states = 3, dim = 2, HMM_iter = 10)
+        self.HMM_predict_dict[series_name] = self.HMM_predict
+        self.plot_series()
     
     def filter_dictionary(self):
         try:
