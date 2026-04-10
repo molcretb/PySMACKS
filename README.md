@@ -1,5 +1,9 @@
 # PySMACKS
-Python version of the SMACKS framework for smFRET analysis
+## Overview
+Python framework for single-molecule FRET data analysis.
+The general pipeline includes the following steps:
+
+
 
 Modules that are ready for test:
 
