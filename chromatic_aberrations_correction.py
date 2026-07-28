@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from scipy.optimize import minimize
 from cv2 import warpPerspective
+from skimage.transform import warp
+from skimage.registration import optical_flow_ilk
 
 def generate_trans_matrix(x, H, W):
     """
@@ -166,7 +168,7 @@ def generate_chrom_ab_corr_movie(img1, x):
    
     return trans_img1
 
-def show_align_res(matrix_align, img_donor, img_acceptor, k = 0):
+def show_align_res(matrix_align, img_donor, img_acceptor, k = 0, factor_con_max = 0.5):
     """
     Function that generates a chromatic aberrations corrected image in RGB with red channel as the corrected donor image and green channel as the donor image (blue channel is 0)
 
@@ -190,16 +192,63 @@ def show_align_res(matrix_align, img_donor, img_acceptor, k = 0):
     trans_img_donor = generate_chrom_ab_corr_movie(img_donor[:,:,k], matrix_align)
     
     # Create the red and green channels with corrected donor and reference acceptor images, and normalized them with their respective maximum values
-    R_channel = trans_img_donor/np.max(trans_img_donor)
-    G_channel = img_acceptor[:,:,k]/np.max(img_acceptor[:,:,k])
+    R_channel = trans_img_donor/np.max(trans_img_donor)/factor_con_max
+    G_channel = img_acceptor[:,:,k]/np.max(img_acceptor[:,:,k])/factor_con_max
     B_channel = np.zeros(trans_img_donor.shape)
     
     # Show the merge channels
     plt.figure('Chromatic abberation correction, frame = ' + str(k))
-    plt.imshow(np.stack((R_channel, G_channel, B_channel), axis=-1))
+    plt.imshow(np.stack((R_channel, G_channel, B_channel), axis=-1), vmax=factor_con_max)
     return
 
-def pipeline_chrom_ab_correction(nb_ref_frames = 5, method_min_opt='Nelder-Mead', maxfev_value_opt = 5000):
+
+def OpticalFlow_registration(img_stack_acceptor, img_stack_donor, radius_OF = 10):
+    
+    nb_frame = img_stack_acceptor.shape[2]
+    
+    v_stack = np.zeros(img_stack_acceptor.shape)
+    u_stack = np.zeros(img_stack_acceptor.shape)
+    
+    for k in range(nb_frame):
+        print(str(k+1) + '/' + str(nb_frame))
+        v_stack[:,:,k], u_stack[:,:,k] = optical_flow_ilk(img_stack_acceptor[:,:,k], img_stack_donor[:,:,k], 
+                                                          radius=radius_OF, 
+                                                          prefilter = False,
+                                                          gaussian = False)
+
+    
+    V_mean = np.mean(v_stack, axis = 2)
+    U_mean = np.mean(u_stack, axis = 2)
+    
+    return V_mean, U_mean
+
+def Warp_OpticalFlow(img, V, U):
+    
+    img_warp_stack = np.zeros(img.shape)
+    
+    nr, nc, len_img = img.shape
+
+
+    row_coords, col_coords = np.meshgrid(np.arange(nr), np.arange(nc), indexing='ij')
+    
+    for k in range(len_img):
+        img_warp_stack[:,:,k] = warp(img[:,:,k], np.array([row_coords + V, col_coords + U]), mode='edge')
+    
+    return img_warp_stack
+
+def plot_OF_align(img_stack_acceptor, img_stack_donor, V, U, k = 0, factor_con_max = 0.5):
+    
+    R_channel = (img_stack_acceptor[:,:,k]-np.min(img_stack_acceptor[:,:,k]))/(np.max(img_stack_acceptor[:,:,k])-np.min(img_stack_acceptor[:,:,k]))/factor_con_max
+    G_channel = (img_stack_donor[:,:,k]-np.min(img_stack_donor[:,:,k]))/(np.max(img_stack_donor[:,:,k])-np.min(img_stack_donor[:,:,k]))/factor_con_max
+    B_channel = np.zeros(img_stack_donor[:,:,0].shape)
+    
+    # Show the merge channels
+    #plt.figure('Chromatic abberation correction, frame = ' + str(k))
+    plt.figure()
+    plt.imshow(np.stack((R_channel, G_channel, B_channel), axis=-1))
+    
+
+def pipeline_chrom_ab_correction(nb_ref_frames = 10, method = 'Optical Flow', radius_OF = 10, method_min_opt='Nelder-Mead', maxfev_value_opt = 5000, factor_con_max = 0.5):
     """
     Main function to run the chromatic aberrations correction
 
@@ -223,8 +272,8 @@ def pipeline_chrom_ab_correction(nb_ref_frames = 5, method_min_opt='Nelder-Mead'
     # Select first the donor calibration movie and second the acceptor calibration movie \
         # (we used the donor channel as reference for the chromatic aberrations correction)
     root = Tk(className='Open calibration channels', )
-    file_path_donor = askopenfilenames(title="Select the Donor calibration channel movie")
     file_path_acceptor = askopenfilenames(title="Select the Acceptor calibration channel movie")
+    file_path_donor = askopenfilenames(title="Select the Donor calibration channel movie")
     root.destroy()
     # try to open the movies, end the process if the files don't match the requirements as file type (likely TIFF multi-planes files)
     try:
@@ -256,19 +305,31 @@ def pipeline_chrom_ab_correction(nb_ref_frames = 5, method_min_opt='Nelder-Mead'
         img_acceptor.seek(i)
         img_stack_acceptor[:,:,count_i] = np.array(img_acceptor)
         count_i = count_i + 1
+    if method == 'Optical Flow':
+        
+        print('Optical Flow registration started...')
+        V_mean, U_mean = OpticalFlow_registration(img_stack_acceptor, img_stack_donor, radius_OF = radius_OF)
+        print('Optical Flow registration finished!')
+        print('Warping of donor movie...')
+        img_warp_donor = Warp_OpticalFlow(img_stack_donor, V_mean, U_mean)
+        
+        plot_OF_align(img_stack_acceptor, img_warp_donor, V_mean, U_mean, k = 0, factor_con_max = factor_con_max)
+        return V_mean, U_mean
+        
+    else:
     
-    # we run the optimization algorithm with the selected stacks of frames from the donor and acceptor movies\
-        # the optional parameters method_min and maxfev_value can be provided to finetune the optimization process, if needed
-    print('Optimization of the transformation matrix ongoing...')
-    res_align = minimize_logP(img_stack_donor, img_stack_acceptor, method_min=method_min_opt, maxfev_value = maxfev_value_opt)
-    print('Optimization of the transformation matrix done!')
-    
-    # we extract the optimized transformation matrix coefficients
-    matrix_align = res_align.x
-    
-    # Show the result on the first frame
-    show_align_res(matrix_align, img_stack_donor, img_stack_acceptor, k = 0)
-    
-    print('Chromatic aberrations correction step completed!')
-    
-    return matrix_align
+        # we run the optimization algorithm with the selected stacks of frames from the donor and acceptor movies\
+            # the optional parameters method_min and maxfev_value can be provided to finetune the optimization process, if needed
+        print('Optimization of the transformation matrix ongoing...')
+        res_align = minimize_logP(img_stack_donor, img_stack_acceptor, method_min=method_min_opt, maxfev_value = maxfev_value_opt)
+        print('Optimization of the transformation matrix done!')
+        
+        # we extract the optimized transformation matrix coefficients
+        matrix_align = res_align.x
+        
+        # Show the result on the first frame
+        show_align_res(matrix_align, img_stack_donor, img_stack_acceptor, k = 0, factor_con_max = factor_con_max)
+        
+        print('Chromatic aberrations correction step completed!')
+        
+        return matrix_align

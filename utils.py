@@ -16,6 +16,11 @@ from seaborn import jointplot as jointplot
 from scipy.optimize import curve_fit
 import scipy.optimize as opt
 from scipy.optimize import least_squares
+from TVDCondat2013 import tvd_2013
+import shutil
+import os
+import copy
+from openfret import read_data, write_data
 
 def load_data():
     """
@@ -97,8 +102,8 @@ def load_submovies(filename):
 def select_donor_and_acceptor_movies():
     
     root = Tk(className='Open TIFF movies', )
-    file_path_D = askopenfilenames(title="Select the donor TIFF movies")
     file_path_A = askopenfilenames(title="Select the acceptor TIFF movies")
+    file_path_D = askopenfilenames(title="Select the donor TIFF movies")
     root.destroy()
     
     return file_path_D, file_path_A
@@ -163,7 +168,7 @@ def save_traces_dict(traces_dict):
     
     # A Tkinter window first appears and asks the user to input the name and path of the JSON file to save the traces dataset
     root = Tk(className='Save traces datasets', )
-    file_save = asksaveasfile(title="Save traces dataset", defaultextension=".json")
+    file_save = asksaveasfile(title="Save traces dataset", defaultextension=".json", initialfile="NAME_of_your_DATASET.json")
     file_save.close()
     root.destroy()
     
@@ -172,6 +177,31 @@ def save_traces_dict(traces_dict):
         dump(traces_dict, fp, cls=NpEncoder, separators=(',', ':')) 
     print('Traces dataset saved as JSON file to path: ' + file_save.name)
     return
+
+def select_autosave_file():
+    root = Tk(className='Create an autosave file...', )
+    file_save = asksaveasfile(title="Create an autosave file", defaultextension=".json", initialfile="NAME_of_your_temporary_file.json")
+    file_save.close()
+    root.destroy()
+    return file_save.name
+
+def autosave_intermed_res(autosave_file, dict_auto_save):
+    
+    with open(autosave_file, "w") as fp:
+        dump(dict_auto_save, fp, cls=NpEncoder, separators=(',', ':')) 
+    print('Autosave done!' + autosave_file)
+
+def convert_calib_dict2Var(calib_dict):
+    align_method = calib_dict['method']
+    
+    if align_method == 'Optical Flow':
+        V = np.array(calib_dict['matrix_align'][0])
+        U = np.array(calib_dict['matrix_align'][1])
+        matrix_align = (V, U)
+    else:
+        matrix_align = np.array(calib_dict['matrix_align'])
+    
+    return matrix_align, align_method
 
 def load_JSON_traces_data():
     """
@@ -367,6 +397,7 @@ def FRET_corr_pipeline(nb_gauss = 2, nb_bins = 100):
         traces_dict_DO = load(json_file)
     traces_dict_DO = calculate_FRET_Eff(traces_dict_DO)
     alpha = calculate_alpha_corr_factor(traces_dict_DO)
+    plot_corr_histo_FRET(traces_dict_DO, alpha, 0, 1, 1)
     
     # get delta correction factor from AA data
     
@@ -375,6 +406,7 @@ def FRET_corr_pipeline(nb_gauss = 2, nb_bins = 100):
         traces_dict_AO = load(json_file)
     traces_dict_AO = calculate_FRET_Eff(traces_dict_AO)
     delta = calculate_delta_corr_factor(traces_dict_AO)
+    plot_corr_histo_FRET(traces_dict_AO, 0, delta, 1, 1)
     
     # get beta and gamma correction factors from DA data
     
@@ -382,12 +414,12 @@ def FRET_corr_pipeline(nb_gauss = 2, nb_bins = 100):
     with open(file_path_DA[0]) as json_file:
         traces_dict_DA = load(json_file)
     traces_dict_DA = calculate_FRET_Eff(traces_dict_DA)
-    traces_dict_DA = plot_corr_histo_FRET(traces_dict_DA, alpha, delta, 1, 1, plot_hist = 0, return_dict = 1, nb_bins = nb_bins)
-    beta, gamma = calculate_beta_gamma_corr_factor(traces_dict_DA, nb_gauss = nb_gauss, nb_bins = nb_bins)
+    traces_dict_DA = plot_corr_histo_FRET(traces_dict_DA, alpha, delta, 1, 1, plot_hist = 0, return_dict = 1, bin_size = 0.01, ax_lim_eps = 0.2)
+    beta, gamma = calculate_beta_gamma_corr_factor(traces_dict_DA, nb_gauss = nb_gauss, bin_size = 0.01, ax_lim_eps = 0.2)
     
     # get FRET corrected 2D histogram
     
-    corr_histo = plot_corr_histo_FRET(traces_dict_DA, alpha, delta, beta, gamma, nb_bins = nb_bins)
+    corr_histo = plot_corr_histo_FRET(traces_dict_DA, alpha, delta, beta, gamma, bin_size = 0.01, ax_lim_eps = 0.2)
     
     corr_FRET_eff_hist = np.sum(corr_histo, axis = 0)[1:-1]
     
@@ -412,13 +444,23 @@ def calculate_FRET_Eff(traces_dict):
         trace_DA = np.array(traces_dict[i]['Intensity_DA'])
         trace_AA = np.array(traces_dict[i]['Intensity_AA'])
         
-        trace_DD = trace_DD*(trace_DD >= 0)
-        trace_DA = trace_DA*(trace_DA >= 0)
-        trace_AA = trace_AA*(trace_AA >= 0)
+        # trace_DD = trace_DD*(trace_DD >= 0)
+        # trace_DA = trace_DA*(trace_DA >= 0)
+        # trace_AA = trace_AA*(trace_AA >= 0)
         
-        traces_dict[i]['FRET_eff'] = trace_DA / (trace_DD + trace_DA)
+        FRET_eff_i = trace_DA / (trace_DD + trace_DA)
         
-        traces_dict[i]['FRET_stoi'] = (trace_DA + trace_DD) / (trace_DD + trace_DA + trace_AA)
+        FRET_eff_i_list = np.ma.masked_invalid(FRET_eff_i).mask
+        
+        FRET_stoi_i = (trace_DA + trace_DD) / (trace_DD + trace_DA + trace_AA)
+        
+        FRET_stoi_i_list = np.ma.masked_invalid(FRET_stoi_i).mask
+        
+        list_FRET_OK = ~np.logical_or(FRET_eff_i_list, FRET_stoi_i_list)
+        
+        traces_dict[i]['FRET_eff'] = FRET_eff_i[list_FRET_OK]
+        
+        traces_dict[i]['FRET_stoi'] = FRET_stoi_i[list_FRET_OK]
         
         FRET_conc = np.concat((FRET_conc, traces_dict[i]['FRET_eff']))
         
@@ -440,13 +482,13 @@ def calculate_alpha_corr_factor(traces_dict):
     for i in ID_traces:
         FRET_conc = np.concat((FRET_conc, traces_dict[i]['FRET_eff']))
     fig, ax = plt.subplots()
-    counts, bins, bars = ax.hist(FRET_conc, 200)
+    counts, bins, bars = ax.hist(FRET_conc, 100, range=(-1,1))
     plt.close(fig)
     bins_center = 0.5*(bins[1:]+bins[0:-1])
     popt, pcov = curve_fit(Gauss_data, bins_center[1:-1], counts[1:-1], p0 = [np.max(counts[1:-1]),np.argmax(counts[1:-1]),np.argmax(counts[1:-1])])
     alpha = popt[2]/(1-popt[2])
     
-    x = np.linspace(0, 1, 200)
+    x = np.linspace(-1, 1, 1000)
     
     y_gauss = Gauss_data(x, popt[0], popt[1], popt[2])
     
@@ -470,13 +512,13 @@ def calculate_delta_corr_factor(traces_dict):
     for i in ID_traces:
         FRET_S_conc = np.concat((FRET_S_conc, traces_dict[i]['FRET_stoi']))
     fig, ax = plt.subplots()
-    counts, bins, bars = ax.hist(FRET_S_conc, 200)
+    counts, bins, bars = ax.hist(FRET_S_conc, 100, range=(-1,1))
     plt.close(fig)
     bins_center = 0.5*(bins[1:]+bins[0:-1])
     popt, pcov = curve_fit(Gauss_data, bins_center[1:-1], counts[1:-1], p0 = [np.max(counts[1:-1]),np.argmax(counts[1:-1]),np.argmax(counts[1:-1])])
     delta = popt[2]/(1-popt[2])
     
-    x = np.linspace(0, 1, 200)
+    x = np.linspace(-1, 1, 1000)
     
     y_gauss = Gauss_data(x, popt[0], popt[1], popt[2])
     
@@ -485,13 +527,13 @@ def calculate_delta_corr_factor(traces_dict):
     label_fit = r'$\delta$ = '+str(np.round(delta, 4))
     ax.plot(x, y_gauss, label=label_fit)
     plt.title(r'$\delta$ correction from Acceptor-Only traces')
-    plt.xlabel('FRET stoichiometry')
+    plt.xlabel('Stoichiometry')
     plt.ylabel('Counts')
     ax.legend()
     
     return delta
 
-def plot_corr_histo_FRET(traces_dict, alpha, delta, beta, gamma, plot_hist = 1, return_dict = 0, return_fret_conc = 0, nb_bins = 100):
+def plot_corr_histo_FRET(traces_dict, alpha, delta, beta, gamma, plot_hist = 1, return_dict = 0, return_fret_conc = 0, bin_size = 0.01, ax_lim_eps = 0.2):
     
     ID_traces = list(traces_dict.keys())
     
@@ -504,25 +546,34 @@ def plot_corr_histo_FRET(traces_dict, alpha, delta, beta, gamma, plot_hist = 1, 
         trace_DA = np.array(traces_dict[i]['Intensity_DA'])
         trace_AA = np.array(traces_dict[i]['Intensity_AA'])
         
-        trace_DD = trace_DD*(trace_DD >= 0)
-        trace_DA = trace_DA*(trace_DA >= 0)
-        trace_AA = trace_AA*(trace_AA >= 0)
+        # trace_DD = trace_DD*(trace_DD >= 0)
+        # trace_DA = trace_DA*(trace_DA >= 0)
+        # trace_AA = trace_AA*(trace_AA >= 0)
+        FRET_eff_i = (trace_DA - alpha * trace_DD - delta * trace_AA) / (gamma * trace_DD + trace_DA - alpha * trace_DD - delta * trace_AA)
         
-        traces_dict[i]['FRET_eff_corr'] = (trace_DA - alpha * trace_DD - delta * trace_AA) / (gamma * trace_DD + trace_DA - alpha * trace_DD - delta * trace_AA)
+        FRET_stoi_i = (trace_DA - alpha * trace_DD + gamma * trace_DD - delta * trace_AA) / (gamma * trace_DD + trace_DA - alpha * trace_DD + trace_AA / beta - delta * trace_AA)
         
-        traces_dict[i]['FRET_stoi_corr'] = (trace_DA - alpha * trace_DD + gamma * trace_DD - delta * trace_AA) / (gamma * trace_DD + trace_DA - alpha * trace_DD + trace_AA / beta - delta * trace_AA)
+        FRET_eff_i_list = np.ma.masked_invalid(FRET_eff_i).mask
+        
+        FRET_stoi_i_list = np.ma.masked_invalid(FRET_stoi_i).mask
+        
+        list_FRET_OK = ~np.logical_or(FRET_eff_i_list, FRET_stoi_i_list)
+        
+        traces_dict[i]['FRET_eff_corr'] = FRET_eff_i[list_FRET_OK]
+        
+        traces_dict[i]['FRET_stoi_corr'] = FRET_stoi_i[list_FRET_OK]
         
         FRET_conc = np.concat((FRET_conc, traces_dict[i]['FRET_eff_corr']))
         
         FRET_S_conc = np.concat((FRET_S_conc, traces_dict[i]['FRET_stoi_corr']))
         
-    hist2D_map = generate_2D_histogram(FRET_conc, FRET_S_conc, nb_bins = nb_bins)
+    hist2D_map = generate_2D_histogram(FRET_conc, FRET_S_conc, bin_size = bin_size, ax_lim_eps = ax_lim_eps)
     
     if plot_hist == 1:
         plt.figure()
-        plt.imshow(hist2D_map, interpolation='none', origin='lower', extent=[0,1,0,1])
+        plt.imshow(hist2D_map, interpolation='none', origin='lower', extent=[-ax_lim_eps,1+ax_lim_eps,-ax_lim_eps,1+ax_lim_eps])
         plt.xlabel('FRET efficiency')
-        plt.ylabel('FRET stoichiometry')
+        plt.ylabel('Stoichiometry')
         plt.title(r'$\alpha$-$\delta$-$\beta$-$\gamma$ corrected FRET histogram')
     if return_dict == 1:
         if return_fret_conc == 1:
@@ -550,29 +601,37 @@ def plot_corr_histo_FRET(traces_dict, alpha, delta, beta, gamma, plot_hist = 1, 
 def Gauss_data(x, A, B, C):
     return A * np.exp(-(x-C)**2/B**2)
 
-def generate_2D_histogram(FRET_conc, FRET_S_conc, nb_bins = 100):
-    bin_size = 1/nb_bins
+def generate_2D_histogram(FRET_conc, FRET_S_conc, bin_size = 0.01, ax_lim_eps = 0.2):
+    
+    nb_bins = int((1+2*ax_lim_eps)/bin_size)
     
     hist2D_map = np.zeros((nb_bins, nb_bins))
     
     compt_nan = 0
     
-    FRET_conc = FRET_conc * (FRET_conc >= 0)
+    # x_ax = np.linspace(-ax_lim_eps,1+ax_lim_eps, nb_bins)
     
-    FRET_S_conc = FRET_S_conc * (FRET_S_conc >= 0)
+    extra_bins = int(ax_lim_eps // bin_size)
     
-    FRET_hist_bin = [FRET_S_conc // bin_size, FRET_conc // bin_size]
+    #FRET_conc = FRET_conc * (FRET_conc >= 0)
+    
+    #FRET_S_conc = FRET_S_conc * (FRET_S_conc >= 0)
+    
+    FRET_hist_bin = [FRET_S_conc // bin_size + extra_bins, FRET_conc // bin_size + extra_bins]
     
     for i in range(len(FRET_conc)):
         try:
-            hist2D_map[FRET_hist_bin[0][i].astype(int), FRET_hist_bin[1][i].astype(int)] += 1
+            x_i = FRET_hist_bin[0][i].astype(int)
+            y_i = FRET_hist_bin[1][i].astype(int)
+            if (x_i >= 0) and (y_i >=0):
+                hist2D_map[x_i, y_i] += 1
         except IndexError:
             compt_nan += 1
     
-    hist2D_map[0,:] = 0
-    hist2D_map[-1,:] = 0
-    hist2D_map[:,0] = 0
-    hist2D_map[:,-1] = 0
+    # hist2D_map[0,:] = 0
+    # hist2D_map[-1,:] = 0
+    # hist2D_map[:,0] = 0
+    # hist2D_map[:,-1] = 0
     
     return hist2D_map
     # plt.figure()
@@ -592,7 +651,7 @@ def generate_2D_histogram(FRET_conc, FRET_S_conc, nb_bins = 100):
     # plt.imshow(hist2D_map,origin='lower', interpolation='none')
     # plt.plot(x,res_fit[0]*x + res_fit[1])
     
-def calculate_beta_gamma_corr_factor(traces_dict, nb_gauss = 2, nb_bins = 100):
+def calculate_beta_gamma_corr_factor(traces_dict, nb_gauss = 2, bin_size = 0.01, ax_lim_eps = 0.2):
     
     ID_traces = list(traces_dict.keys())
     
@@ -603,11 +662,15 @@ def calculate_beta_gamma_corr_factor(traces_dict, nb_gauss = 2, nb_bins = 100):
         FRET_conc = np.concat((FRET_conc, traces_dict[i]['FRET_eff_corr']))
         FRET_S_conc = np.concat((FRET_S_conc, traces_dict[i]['FRET_stoi_corr']))
         
-    hist2D_map = generate_2D_histogram(FRET_conc, FRET_S_conc, nb_bins = nb_bins)
+    hist2D_map = generate_2D_histogram(FRET_conc, FRET_S_conc, bin_size = bin_size, ax_lim_eps = ax_lim_eps)
     
-    peak_coord = fit_Gauss_spot(hist2D_map, nb_gauss = nb_gauss)
+    peak_coord = fit_Gauss_spot(hist2D_map, nb_gauss = nb_gauss, bin_size = bin_size, ax_lim_eps = ax_lim_eps)
     
-    b, a = np.polyfit(peak_coord[:,0]/nb_bins, nb_bins/peak_coord[:,1], 1)
+    nb_bins = int((1+2*ax_lim_eps)/bin_size)
+    
+    x_ax = np.linspace(-ax_lim_eps,1+ax_lim_eps, nb_bins)
+    
+    b, a = np.polyfit(x_ax[peak_coord[:,0].astype(int)], 1/x_ax[peak_coord[:,1].astype(int)], 1)
     
     beta = a + b -1
     gamma = (a - 1) / (a + b - 1)
@@ -624,7 +687,7 @@ def twoD_Gaussian(xy, gauss_param, nb_gauss):
 def error_func(gauss_param, nb_gauss, x, y):
     return twoD_Gaussian(x, gauss_param, nb_gauss) - y
 
-def fit_Gauss_spot(img_spot, nb_gauss = 2):
+def fit_Gauss_spot(img_spot, nb_gauss = 2, bin_size = 0.01, ax_lim_eps = 0.2):
     x_len = img_spot.shape[0]
     y_len = img_spot.shape[1]
     x_vec = np.linspace(0, x_len-1, x_len)
@@ -660,10 +723,16 @@ def fit_Gauss_spot(img_spot, nb_gauss = 2):
     for j in range(nb_gauss):
         peak_coord[j,0] = output.x[5*j+3]  # FRET eff
         peak_coord[j,1] = output.x[5*j+2]  # FRET stoich
+    
+    
+    nb_bins = int((1+2*ax_lim_eps)/bin_size)
+    
+    x_ax = np.linspace(-ax_lim_eps,1+ax_lim_eps, nb_bins)
         
     plt.figure()
-    plt.imshow(img_spot,origin='lower', interpolation='none', extent=[0,1,0,1])
-    plt.plot(peak_coord[:,0]/len(img_spot), peak_coord[:,1]/len(img_spot), 'ro')
+    plt.imshow(img_spot,origin='lower', interpolation='none', extent=[-ax_lim_eps,1+ax_lim_eps,-ax_lim_eps,1+ax_lim_eps])
+    #plt.plot(peak_coord[:,0]/len(img_spot), peak_coord[:,1]/len(img_spot), 'ro')
+    plt.plot(x_ax[peak_coord[:,0].astype(int)], x_ax[peak_coord[:,1].astype(int)], 'ro')
     plt.xlabel('FRET efficiency')
     plt.ylabel('FRET stoichiometry')
     plt.title(r'$\alpha$-$\delta$ corrected FRET histogram')
@@ -680,7 +749,7 @@ def multi_Gaussian(x, gauss_param, nb_gauss):
 def multi_error_func(gauss_param, nb_gauss, x, y):
     return multi_Gaussian(x, gauss_param, nb_gauss) - y
 
-def multi_fit_Gauss_spot(hist_1D, nb_gauss = 2):
+def multi_fit_Gauss_spot(hist_1D, nb_gauss = 2, ax_lim_eps = 0.2):
     x_vec = hist_1D[0,:]
     y_vec = hist_1D[1,:]
     # initial_guess = (max_img-noise_img, x_len*0.5, x_len*0.6, 10, 10, max_img-noise_img, x_len*0.5, x_len*0.2, 10, 10, noise_img)
@@ -703,8 +772,8 @@ def multi_fit_Gauss_spot(hist_1D, nb_gauss = 2):
         print('No peak found')
         return
     
-    x_fit = np.linspace(0,1,1000)
-    
+    x_fit = np.linspace(-ax_lim_eps, 1+ax_lim_eps, 1000)
+
     multi_gauss_fit = multi_Gaussian(x_fit, output.x, nb_gauss)
     
     fig, ax = plt.subplots()
@@ -733,3 +802,363 @@ def multi_fit_Gauss_spot(hist_1D, nb_gauss = 2):
     df_FRET_peaks = DF(data={'FRET_peak_amplitude': FRET_peak_amp, 'FRET_peak_position': FRET_peak_pos, 'FRET_peak_STD': FRET_peak_std})
     
     return df_FRET_peaks
+
+
+def plot_detection_modif_BM(
+        image,
+        spots,
+        shape="circle",
+        factor_con_max = 0.5,
+        factor_con_min = 1,
+        radius=3,
+        color="red",
+        linewidth=1,
+        fill=False,
+        rescale=False,
+        contrast=False,
+        title=None,
+        framesize=(15, 10),
+        remove_frame=True,
+        path_output=None,
+        ext="png",
+        show=True):
+    """Plot detected spots and foci on a 2-d image.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        A 2-d image with shape (y, x).
+    spots : list or np.ndarray
+        Array with coordinates and shape (nb_spots, 3) or (nb_spots, 2). To
+        plot different kind of detected spots with different symbols, use a
+        list of arrays.
+    shape : list or str, default='circle'
+        List of symbols used to localized the detected spots in the image,
+        among `circle`, `square` or `polygon`. One symbol per array in `spots`.
+        If `shape` is a string, the same symbol is used for every elements of
+        'spots'.
+    radius : list or int or float, default=3
+        List of yx radii of the detected spots, in pixel. One radius per array
+        in `spots`. If `radius` is a scalar, the same value is applied for
+        every elements of `spots`.
+    color : list or str, default='red'
+        List of colors of the detected spots. One color per array in `spots`.
+        If `color` is a string, the same color is applied for every elements
+        of `spots`.
+    linewidth : list or int, default=1
+        List of widths or width of the border symbol. One integer per array
+        in `spots`. If `linewidth` is an integer, the same width is applied
+        for every elements of `spots`.
+    fill : list or bool, default=False
+        List of boolean to fill the symbol of the detected spots. If `fill` is
+        a boolean, it is applied for every symbols.
+    rescale : bool, default=False
+        Rescale pixel values of the image (made by default in matplotlib).
+    contrast : bool, default=False
+        Contrast image.
+    title : str, optional
+        Title of the image.
+    framesize : tuple, default=(15, 10)
+        Size of the frame used to plot with ``plt.figure(figsize=framesize)``.
+    remove_frame : bool, default=True
+        Remove axes and frame.
+    path_output : str, optional
+        Path to save the image (without extension).
+    ext : str or list, default='png'
+        Extension used to save the plot. If it is a list of strings, the plot
+        will be saved several times.
+    show : bool, default=True
+        Show the figure or not.
+
+    """
+    # enlist and format parameters
+    if not isinstance(spots, list):
+        spots = [spots]
+
+    # plot
+    fig, ax = plt.subplots(1, 1, figsize=framesize)
+
+    ax.imshow(image, vmin=np.min(image)*factor_con_min, vmax=np.max(image)*factor_con_max)
+
+    for i, coordinates in enumerate(spots):
+
+        # get 2-d coordinates
+        if coordinates.shape[1] == 3:
+            coordinates_2d = coordinates[:, 1:]
+        else:
+            coordinates_2d = coordinates
+
+        # plot symbols
+        for y, x in coordinates_2d:
+            x = _define_patch(
+                x, y, shape, radius, color, linewidth, fill)
+            ax.add_patch(x)
+
+    # titles and frames
+    if title is not None:
+        ax.set_title("Detection results", fontweight="bold", fontsize=10)
+    if remove_frame:
+        ax.axis("off")
+    plt.tight_layout()
+
+    plt.show()
+
+def _define_patch(x, y, shape, radius, color, linewidth, fill):
+    """Define a matplotlib.patches to plot.
+
+    Parameters
+    ----------
+    x : int or float
+        Coordinate x for the patch center.
+    y : int or float
+        Coordinate y for the patch center.
+    shape : str
+        Shape of the patch to define (among `circle`, `square` or `polygon`)
+    radius : int or float
+        Radius of the patch.
+    color : str
+        Color of the patch.
+    linewidth : int
+        Width of the patch border.
+    fill : bool
+        Make the patch shape empty or not.
+
+    Returns
+    -------
+    x : matplotlib.patches object
+        Geometric form to add to a plot.
+
+    """
+    # circle
+    x = plt.Circle(
+        (x, y),
+        radius,
+        color=color,
+        linewidth=linewidth,
+        fill=fill)
+    return x
+
+def plot_results_cluster_filter(image, coord_spot_before, coord_spot_after,
+                                factor_con_max = 0.5,
+                                factor_con_min = 1,
+                                shape="circle",
+                                radius=3,
+                                color="red",
+                                clusterDisp=1,
+                                colorCluster="black",
+                                linewidth=1,
+                                fill=False,
+                                rescale=False,
+                                contrast=False,
+                                title=1,
+                                framesize=(15, 10),
+                                remove_frame=True,
+                                path_output=None,
+                                ext="png",
+                                show=True):
+    
+    # if not isinstance(coord_spot_before, list):
+    #     coord_spot_before = [coord_spot_before]
+        
+    # if not isinstance(coord_spot_after, list):
+    #     coord_spot_after = [coord_spot_after]
+
+    # plot
+    fig, ax = plt.subplots(1, 2, figsize=framesize)
+    ax[0].imshow(image, vmin=np.min(image)*factor_con_min, vmax=np.max(image)*factor_con_max)
+    ax[1].imshow(image, vmin=np.min(image)*factor_con_min, vmax=np.max(image)*factor_con_max)
+    
+    
+    for coord_i in coord_spot_before:
+        if coord_i in coord_spot_after:
+            y, x = coord_i
+            x1 = _define_patch(
+                x, y, shape, radius, color, linewidth, fill)
+            ax[0].add_patch(x1)
+            x2 = _define_patch(
+                x, y, shape, radius, color, linewidth, fill)
+            ax[1].add_patch(x2)
+        else:
+            y, x = coord_i
+            x = _define_patch(
+                x, y, shape, radius, colorCluster, linewidth, fill)
+            ax[0].add_patch(x)
+
+    # for i, coordinates in enumerate(coord_spot_before):
+
+    #     # get 2-d coordinates
+    #     if coordinates.shape[1] == 3:
+    #         coordinates_2d = coordinates[:, 1:]
+    #     else:
+    #         coordinates_2d = coordinates
+
+    #     # plot symbols
+    #     for y, x in coordinates_2d:
+    #         x = _define_patch(
+    #             x, y, shape, radius, color, linewidth, fill)
+    #         ax[0].add_patch(x)
+            
+    
+    # for i, coordinates in enumerate(coord_spot_after):
+
+    #     # get 2-d coordinates
+    #     if coordinates.shape[1] == 3:
+    #         coordinates_2d = coordinates[:, 1:]
+    #     else:
+    #         coordinates_2d = coordinates
+
+    #     # plot symbols
+    #     for y, x in coordinates_2d:
+    #         x = _define_patch(
+    #             x, y, shape, radius, color, linewidth, fill)
+    #         ax[1].add_patch(x)
+
+    # titles and frames
+    if title is not None:
+        ax[0].set_title("Before clusters filtering", fontweight="bold", fontsize=10)
+        ax[1].set_title("After clusters filtering", fontweight="bold", fontsize=10)
+    if remove_frame:
+        ax[0].axis("off")
+        ax[1].axis("off")
+    plt.tight_layout()
+
+    plt.show()
+    
+def export_OpenFRET_to_CSV_traces(traces_dict, select_key, path):
+    
+    nb_traces = len(traces_dict.traces)
+    
+    #list_keys = []
+    
+    if not os.path.exists(path+'\\Exported_traces_CSV\\' + select_key):
+        os.makedirs(path+'\\Exported_traces_CSV\\' + select_key)
+    
+    # for i in range(nb_traces):
+        
+    #     list_keys = list_keys + list(traces_dict.traces[i].metadata.keys())
+        
+    # seen = set()
+    # list_keys[:] = [item for item in list_keys if item not in seen and not seen.add(item)]
+        #traces_dict.traces[i].metadata[class_label]['indmin']
+        #traces_dict.traces[i].metadata[class_label]['indmax']
+        
+    for i in range(nb_traces):
+        if (select_key in list(traces_dict.traces[i].metadata.keys())) or (select_key == 'Full'):
+            
+            if select_key == 'Full':
+                indmin = 0
+                indmax = len(traces_dict.traces[i].channels[0].data) - 1
+            else:
+                indmin = traces_dict.traces[i].metadata[select_key]['indmin']
+                indmax = traces_dict.traces[i].metadata[select_key]['indmax']
+            
+            method_back_corr = traces_dict.traces[i].metadata['background_correction']
+            
+            DD_trace = np.array(traces_dict.traces[i].channels[0].data[indmin:indmax])
+            DA_trace = np.array(traces_dict.traces[i].channels[1].data[indmin:indmax])
+            if traces_dict.metadata['ALEX'] == 'yes':
+                AA_trace = np.array(traces_dict.traces[i].channels[2].data[indmin:indmax])
+                back_DD_trace = np.array(traces_dict.traces[i].channels[3].data[indmin:indmax])
+                back_DA_trace = np.array(traces_dict.traces[i].channels[4].data[indmin:indmax])
+                back_AA_trace = np.array(traces_dict.traces[i].channels[5].data[indmin:indmax])
+            else:
+                back_DD_trace = np.array(traces_dict.traces[i].channels[2].data[indmin:indmax])
+                back_DA_trace = np.array(traces_dict.traces[i].channels[3].data[indmin:indmax])
+            
+            match method_back_corr:
+                case 'None':
+                    back_DD_trace = np.zeros(len(DD_trace))
+                    back_DA_trace = np.zeros(len(DA_trace))
+                    if traces_dict.metadata['ALEX'] == 'yes':
+                        back_AA_trace = np.zeros(len(AA_trace))
+                    
+                # case 'Median':  # case 'median' --> keep background traces as it is
+                    # if traces_dict.metadata['ALEX'] == 'yes':
+                    #     back_DD_trace = np.array(traces_dict.traces[i].channels[3].data[indmin:indmax])
+                    # else:
+                    #     back_DD_trace = np.array(traces_dict.traces[i].channels[2].data[indmin:indmax])
+                case 'Total variation':
+                    max_back_DD = np.max(back_DD_trace)
+                    norm_back_trace_DD = np.array(back_DD_trace) / max_back_DD
+                    TV_back_DD = tvd_2013(norm_back_trace_DD.astype('float'), traces_dict.traces[i].metadata['TV_lambda'])
+                    back_DD_trace = TV_back_DD * max_back_DD
+                    
+                    max_back_DA = np.max(back_DA_trace)
+                    norm_back_trace_DA = np.array(back_DA_trace) / max_back_DA
+                    TV_back_DA = tvd_2013(norm_back_trace_DA.astype('float'), traces_dict.traces[i].metadata['TV_lambda'])
+                    back_DA_trace = TV_back_DA * max_back_DA
+                    
+                    if traces_dict.metadata['ALEX'] == 'yes':
+                        max_back_AA = np.max(back_AA_trace)
+                        norm_back_trace_AA = np.array(back_AA_trace) / max_back_AA
+                        TV_back_AA = tvd_2013(norm_back_trace_AA.astype('float'), traces_dict.traces[i].metadata['TV_lambda'])
+                        back_AA_trace = TV_back_AA * max_back_AA
+                    
+                case 'Min. of TV':
+                    max_back_DD = np.max(back_DD_trace)
+                    norm_back_trace_DD = np.array(back_DD_trace) / max_back_DD
+                    TV_back_DD = tvd_2013(norm_back_trace_DD.astype('float'), traces_dict.traces[i].metadata['TV_lambda'])
+                    back_DD_trace = np.min(TV_back_DD) * max_back_DD
+                    
+                    max_back_DA = np.max(back_DA_trace)
+                    norm_back_trace_DA = np.array(back_DA_trace) / max_back_DA
+                    TV_back_DA = tvd_2013(norm_back_trace_DA.astype('float'), traces_dict.traces[i].metadata['TV_lambda'])
+                    back_DA_trace = np.min(TV_back_DA) * max_back_DA
+                    
+                    if traces_dict.metadata['ALEX'] == 'yes':
+                        max_back_AA = np.max(back_AA_trace)
+                        norm_back_trace_AA = np.array(back_AA_trace) / max_back_AA
+                        TV_back_AA = tvd_2013(norm_back_trace_AA.astype('float'), traces_dict.traces[i].metadata['TV_lambda'])
+                        back_AA_trace = np.min(TV_back_AA) * max_back_AA
+            #self.ax_trace_plot.plot(np.array(self.traces_data[trace_ID].get('Intensity_DD')), 'orange')
+            #self.line_DD.set_data(time_data, np.array(self.traces_data[trace_ID].get('Intensity_DD')))
+            corr_DD = DD_trace - back_DD_trace
+            corr_DA = DA_trace - back_DA_trace
+            if traces_dict.metadata['ALEX'] == 'yes':
+                corr_AA = AA_trace - back_AA_trace
+            
+            if traces_dict.metadata['ALEX'] == 'yes':
+                df_i = np.round(DF(data = {'DD': corr_DD, 'DA': corr_DA, 'AA':corr_AA}), 3)
+            else:
+                df_i = np.round(DF(data = {'DD': corr_DD, 'DA': corr_DA}), 3)
+            
+            uuid_trace_i = traces_dict.traces[i].metadata['UUID_v7']
+            
+            print(uuid_trace_i)
+            
+            df_i.to_csv(path+'\\Exported_traces_CSV\\' + select_key + '\\' + uuid_trace_i + '.csv', index = False)
+    
+    shutil.make_archive(path+'\\Exported_traces_CSV\\' + select_key, 'zip', path+'\\Exported_traces_CSV\\' + select_key)
+    if os.path.exists(path+'\\Exported_traces_CSV\\' + select_key):
+        shutil.rmtree(path+'\\Exported_traces_CSV\\' + select_key)
+    
+    print('Traces successfully exported to: ' + path+'\\Exported_traces_CSV\\' + select_key + '.zip')
+    
+def merge_OpenFRET_datasets(files_path):
+    
+    nb_datasets = len(files_path)
+    
+    if nb_datasets == 1:
+        print('Only one dataset selected')
+        return
+    else:
+        merge_datasets =  copy.deepcopy(read_data(files_path[0]))
+        for i in range(1,nb_datasets):
+            dataset_i = read_data(files_path[i])
+            merge_datasets.traces = merge_datasets.traces + dataset_i.traces
+        
+        merge_folder_path = os.path.dirname(files_path[0]) + '\\Merge_dataset'
+        if not os.path.exists(merge_folder_path):
+            os.makedirs(merge_folder_path)
+            
+        write_data(merge_datasets, merge_folder_path + '\\merged_datasets.json', compress=True)
+        
+        print('Datasets successfully merged and saved to: ' + merge_folder_path + '\\merged_datasets.json.zip')
+        return
+    
+    
+    
+    
+    
+    
+    

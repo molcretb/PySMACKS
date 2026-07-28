@@ -290,6 +290,98 @@ def extract_DA_spots_drift(file_path, drift, kernel_size=3, min_distance=2, ref_
     
     return coord_spots_track
 
+def extract_DA_spots_drift_No_ALEX(file_path, drift, kernel_size=3, min_distance=2, perc_frames = 0.05, Z_project = 1):
+    
+    # root = Tk(className='Open TIFF movies', )
+    # file_path = askopenfilenames(title="Select the donor TIFF movies")
+    # root.destroy()
+    
+    time_frames = 0
+    
+    comp_frame_drift = 0
+    
+    df_coords = []
+    
+    for k in range(len(file_path)):
+        print('Processing movie ' + str(k))
+        img = Image.open(file_path[k])
+        nb_frame = img.n_frames
+        if k < len(file_path) - 1:
+            nb_frame_old = img.n_frames
+        if Z_project == 0:
+            list_frames = [int(i) for i in np.floor(np.linspace(0,nb_frame-1,int(nb_frame*perc_frames)))]
+            for j in list_frames:
+                #print('Processing frame ' + str(j))
+                img.seek(j)
+                img_raw = np.array(img)
+            #img_back = median_filter(img_raw, size = size_median_filt)
+            #img_med_filter = img_raw - img_back
+                coord_spots = detection.detect_spots(img_raw, log_kernel_size=kernel_size, minimum_distance=min_distance)
+                # coord_spots = filter_close_prox_spots(coord_spots, min_dist = 7)
+                #print(len(coord_spots))
+                if (k+j) == 0:
+                    df_coords = pd.DataFrame(data={'y': coord_spots[:,0].tolist(), 'x': coord_spots[:,1].tolist(), 'frame_real':np.zeros(len(coord_spots)), 'frame':np.zeros(len(coord_spots))})
+                    time_frames = nb_frame_old*k + j
+                    comp_frame_drift = comp_frame_drift + 1
+                else:
+                    #df_coords = df_coords._append({'y': coord_spots[:,0].tolist(), 'x': coord_spots[:,1].tolist(), 'frame':np.zeros(len(coord_spots))+time_frames}, ignore_index=True)
+                    
+                    time_frames = nb_frame_old*k + j
+                    new_coords = {'y': coord_spots[:,0].tolist(), 'x': coord_spots[:,1].tolist(), 'frame_real':np.zeros(len(coord_spots))+time_frames, 'frame':np.zeros(len(coord_spots)) + comp_frame_drift}
+                    df_coords = pd.concat([df_coords, pd.DataFrame(data=new_coords)]).reset_index(drop=True)
+                    comp_frame_drift = comp_frame_drift + 1
+        else:
+            img.seek(0)
+            img0 = np.array(img)
+            dim_img = img0.shape
+            img_raw = np.zeros((dim_img[0], dim_img[1], nb_frame))
+            img_raw[:,:,0] = img0
+            for j in range(1,nb_frame):
+                img.seek(j)
+                img_raw[:,:,j] = np.array(img)
+            img_raw_projZ = np.sum(img_raw, axis = 2)
+            coord_spots = detection.detect_spots(img_raw_projZ, log_kernel_size=kernel_size, minimum_distance=min_distance)
+            
+            if k ==0:
+                df_coords = pd.DataFrame(data={'y': coord_spots[:,0].tolist(), 'x': coord_spots[:,1].tolist(), 'frame_real':np.zeros(len(coord_spots)), 'frame':np.zeros(len(coord_spots))})
+                time_frames = time_frames + nb_frame
+            else:
+                new_coords = {'y': coord_spots[:,0].tolist(), 'x': coord_spots[:,1].tolist(), 'frame_real':np.zeros(len(coord_spots))+time_frames, 'frame':np.zeros(len(coord_spots)) + k}
+                df_coords = pd.concat([df_coords, pd.DataFrame(data=new_coords)]).reset_index(drop=True)
+                time_frames = time_frames + nb_frame
+                
+        #time_frames = time_frames + nb_frame
+        
+    df_linked = tp.link(df_coords, 3, memory=time_frames, adaptive_stop = 0.5, adaptive_step = 0.95)  # 5
+    
+    
+    list_frames_drift = df_linked['frame_real'].unique()
+    
+    spot_IDs = df_linked['particle'].unique()
+    
+    coord_spots_track = np.zeros((len(spot_IDs), 2))
+    
+    for j in spot_IDs:
+        df_i = df_linked[df_linked['particle']==j]
+        if len(df_i) > 2:
+            min_frame_i = np.min(df_i['frame'])
+            if min_frame_i == 0:
+                drift_corr_i = [0, 0]
+            else:
+                #drift_corr_i = np.round([drift['y'][min_frame_i], drift['x'][min_frame_i]])
+                drift_corr_i = [drift['y'][min_frame_i-1], drift['x'][min_frame_i-1]]
+                
+            y_spot = int(df_i[df_i['frame']==min_frame_i]['y'].tolist()[0] - drift_corr_i[0])
+            x_spot = int(df_i[df_i['frame']==min_frame_i]['x'].tolist()[0] - drift_corr_i[1])
+            
+            coord_spots_track[j, 0] = y_spot
+            coord_spots_track[j, 1] = x_spot
+        
+    mask = ~np.any(coord_spots_track <= 0, axis=1)
+    coord_spots_track = coord_spots_track[mask]
+    
+    return coord_spots_track
+
 
 def add_drift_to_traces_dict(traces_dict, drift):
     """

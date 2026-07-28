@@ -62,23 +62,32 @@ def TbT_init(DD_channel, DA_channel, nb_hidden_states = 2, dim = 2, HMM_iter = 1
 
 def TbT_HMM_pipeline(traces_dict, nb_hidden_states = 2, dim = 2, HMM_iter = 10):
     
-    traces_dict_ID = list(traces_dict.keys())
+    # we assume traces_dict to be an OpenFRET dataset
+    
+    #traces_dict_ID = list(traces_dict.keys())
+    
+    nb_traces = len(traces_dict.traces)
     
     compt = 0
     
-    stack_rate_mat = np.zeros((len(traces_dict), nb_hidden_states, nb_hidden_states))
+    stack_rate_mat = np.zeros((nb_traces, nb_hidden_states, nb_hidden_states))
     
-    stack_prob_init = np.zeros((len(traces_dict), nb_hidden_states))
+    stack_prob_init = np.zeros((nb_traces, nb_hidden_states))
     
-    for i in traces_dict_ID:
+    for i in range(nb_traces):
         print(compt+1)
-        DD_channel = traces_dict[i]['Intensity_DD']
-        DA_channel = traces_dict[i]['Intensity_DA']
+        # DD_channel = traces_dict[i]['Intensity_DD']
+        # DA_channel = traces_dict[i]['Intensity_DA']
+        DD_channel = traces_dict.traces[i].channels[0].data
+        DA_channel = traces_dict.traces[i].channels[1].data
+        
         # AA_channel = traces_dict[i]['Intensity_AA']
         
         HMM_TbT_param_i = TbT_init(DD_channel, DA_channel, nb_hidden_states = nb_hidden_states, dim = dim, HMM_iter = HMM_iter, return_dyn_param = 1)
     
-        traces_dict[i]['HMM_param'] = HMM_TbT_param_i
+        #traces_dict[i]['HMM_param'] = HMM_TbT_param_i
+        
+        traces_dict.traces[i].metadata['HMM_param'] = HMM_TbT_param_i
         
         stack_rate_mat[compt,:,:] = HMM_TbT_param_i['trans_mat']
         
@@ -131,19 +140,25 @@ def plot_trace_with_HMM(traces_dict, ID = 0, scale = 1):
     
 def calc_sum_neg_scores(a, pi, traces_dict, nb_hidden_states = 2, dim = 2):
     # nb_traces = len(dataset_traces)
-    traces_dict_ID = list(traces_dict.keys())
+    #traces_dict_ID = list(traces_dict.keys())
+    nb_traces = len(traces_dict.traces)
     sum_neg_scores = 0
-    for k in traces_dict_ID:
+    #for k in traces_dict_ID:
+    for k in range(nb_traces):
         try:
             model = hmm.GaussianHMM(n_components= nb_hidden_states, covariance_type="full", init_params='mc', params='mc')
             model.startprob_ = pi
             model.transmat_ = a
             model.n_features = dim
-            model.means_ = traces_dict[k]['HMM_param']['means']
-            model.covars_ = traces_dict[k]['HMM_param']['covar_mat']
+            # model.means_ = traces_dict[k]['HMM_param']['means']
+            # model.covars_ = traces_dict[k]['HMM_param']['covar_mat']
+            model.means_ = traces_dict.traces[k].metadata['HMM_param']['means']
+            model.covars_ = traces_dict.traces[k].metadata['HMM_param']['covar_mat']
             
-            DD_channel = np.array(traces_dict[k]['Intensity_DD'])
-            DA_channel = np.array(traces_dict[k]['Intensity_DA'])
+            # DD_channel = np.array(traces_dict[k]['Intensity_DD'])
+            # DA_channel = np.array(traces_dict[k]['Intensity_DA'])
+            DD_channel = np.array(traces_dict.traces[k].channels[0].data)
+            DA_channel = np.array(traces_dict.traces[k].channels[1].data)
             # AA_channel = np.array(traces_dict[k]['Intensity_AA'])
             
             # X = np.stack([DD_channel, DA_channel, AA_channel], axis = 1)
