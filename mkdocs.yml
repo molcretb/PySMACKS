@@ -1,0 +1,47 @@
+site_name: PySMACKS documentation
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - User guide:
+    - Image registration: registration.md
+    - Traces extraction: extraction.md
+    - Traces filtering: filtering.md
+    - SE histogram: FRET_hist.md
+    - Kinetics analysis: kinetics.md
+  - Tutorials: tutorials.md
+  - About:
+    - Citing PySMACKS: about.md
+    - FAQ: FAQ.md
+  
+theme:
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - search.suggest
+    - toc.integrate
+    - content.code.copy
+  name: material
+  logo: assets/microscope.svg
+  icon:
+    repo: fontawesome/brands/github
+    previous: fontawesome/solid/angle-left
+    next: fontawesome/solid/angle-right
+repo_url: https://github.com/molcretb/PySMACKS
+repo_name: molcretb/PySMACKS
+
+markdown_extensions:
+  - attr_list
+  
+plugins:
+  - search
+  - glightbox
+  
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
