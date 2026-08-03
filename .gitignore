@@ -1,0 +1,8 @@
+dist/
+*.pyc
+src/PySMACKS/__pycache__/
+src/PySMACKS/components/__pycache__/
+src/PySMACKS/GUI/__pycache__/
+src/PySMACKS.egg-info/
+*.log
+*.env

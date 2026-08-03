@@ -1,2 +1,0 @@
-[console_scripts]
-PySMACKS_GUI = PySMACKS.__main__:main
