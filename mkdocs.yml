@@ -29,9 +29,6 @@ theme:
     next: fontawesome/solid/angle-right
 repo_url: https://github.com/molcretb/PySMACKS
 repo_name: molcretb/PySMACKS
-
-markdown_extensions:
-  - attr_list
   
 plugins:
   - search
@@ -45,3 +42,4 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
+  - attr_list
