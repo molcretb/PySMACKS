@@ -5,7 +5,7 @@
 The suggested installation method is to use pip within a virtual environment.
 
 ```
-pip install pysmacks
+pip install PySMACKS
 ```
 
 You can then run the PySMACKS GUI by typing `PySMACKS_GUI` directly inside the console:

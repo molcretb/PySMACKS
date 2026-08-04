@@ -1,3 +1,227 @@
 # PySMACKS
 ## Overview
-Python framework for single-molecule FRET data analysis.
+
+`PySMACKS` is a Python framework for analysis of single-molecule FRET (smFRET) data, from the raw microscopy movies to the corrected FRET histogram and kinetic analysis.
+
+The initial motivation for `PySMACKS` was to port the [SMACKS framework](https://www.singlemolecule.uni-freiburg.de/software/smacks), used within our group, into a modern Python framework. Additional features have then been integrated 
+in order to provide a complete analytical pipeline within a comprehensive framework. The choice of Python was motivated by the vast community of Python developers in smFRET and biophysics fields, 
+and the availability of state-of-the-art computational packages, especially in machine-learning and deep-learning methods.
+
+`PySMACKS` includes features that are necessary for our ongoing research projects, and for shich we could not find existing solutions in the smFRET fields. For imstance, the ability to correct for the microscope stage drift is critical for long
+smFRET experiments, hence the development and integration of this feature into `PySMACKS`.
+
+`PySMACKS` is modular in its architecture and is meant to follow the FAIR data principles. Especially, the choice of the [OpenFRET format](https://pypi.org/project/openfret) for the storage of the traces datasets is motivated by 
+an interoperability purpose, with the idea that this open format makes it easy to translate to antoher open format (for instance netCDF) without loss of metadata. 
+Open science is a core value of the development team of `PySMACKS` and we hope that the smFRET community will benefit from this framework and build upon it.
+
+`PySMACKS` is provided as a Python package and is freely available from [https://pypi.org/project/PySMACKS/](https://pypi.org/project/PySMACKS/).
+
+## Table of Contents
+
+  - [Key Features](#key-features)
+  - [Installation](#installation)
+  - [Workflow](#workflow)
+  - [Documentation](#documentation)
+  - [Contributors](#contributors)
+  - [Acknowledgements](#acknowledgements)
+  - [Funding](#funding)
+  - [Citation](#citation)
+  - [Citation](#citation)
+  - [License](#license)
+  - [Contact](#contact)
+  
+## Key Features
+
+In the current version (1.0.0):
+
+- Channels registration
+    - including Optical Flow or Affine transformation correction methods
+    - QC plot of the registration results
+- Traces extraction
+    - including ALEX- and non-ALEX- smFRET data
+    - Microscope stage drift correction
+    - local background correction over time using the median of surrounding pixels, or advanced strategy (Total Variation, Minimum of Total Variation)
+    - Storage of traces within OpenFRET JSON files
+- Traces iewer and filtering
+    - interactive plot
+    - manual labelling tool for downstream analysis of highlighted sections and/or ML-DL curation of training datasets
+- Stoichiometry-Efficiency FRET histogram
+    - automatic calculation of FRET correction factors
+- Kinetic analysis
+    - Trace-by-Trace HMM
+    - Ensemble HMM
+- Metadata viewer
+
+## Installation
+
+`PySMACKS` is available as a Python package from [https://pypi.org/project/PySMACKS/](https://pypi.org/project/PySMACKS/)
+
+The suggested installation method is to use pip within a virtual environment:
+
+  1. Set a virtual environment
+  
+    ```bash
+    python -m venv NAME_OF_YOUR_VENV
+	```
+	
+	And activate it
+	
+	```bash
+    NAME_OF_YOUR_VENV\Scripts\activate
+	```
+	
+  2. Install the PySMACKS package using pip
+
+    ```bash
+    pip install PySMACKS
+    ```
+	
+  3. Launch the PySMACKS GUI using the command
+  
+    ```bash
+    PySMACKS_GUI
+    ```
+
+## Workflow
+
+The analysis pipeline can be divided into two separate sections:
+
+  - [Traces extraction](#traces-extraction)
+  - [Traces analysis](#traces-analysis)
+  
+`PySMACKS` is meant to be modular and interoperable: raw movies can be processed by `PySMACKS` to extract the single-molecule traces, and analyzed within `PySMACKS`; 
+or these traces can be exported to JSON files and processed using another framework.
+
+Basically, the data management within `PySMACKS` follows the logic: `TIFF --> JSON (OpenFRET format)`.
+  
+### Traces extraction
+
+#### Input data
+
+In the current version (1.0.0), `PySMACKS` only handles TIFF stacks as data input for the traces extraction. Especially, the two channels (donor and acceptor) should be in separate TIFF files.
+
+Additionally, for memory efficiency, the full movies should be split into multiple submovies, (usually a submovie < 500 MB), to avoid saturation of the RAM.
+
+#### ALEX smFRET
+
+`PySMACKS` supports both ALEX and non-ALEX smFRET data; you can specify it during the traces extraction process. 
+
+If your data are ALEX, it is expected that the acceptor submovies frames alternate between acceptor-acceptor frame (ALEX) and donor-acceptor frame (FRET), with the first frame of the movie being ALEX.
+
+#### Channels registration
+
+You can correct the chromatic aberrations and channels misalignments using optical beads TIFF movies (donor and acceptor separate files) and the registration module of `PySMACKS`.
+
+Currently, two methods can be used for the registration:
+
+  - Optical flow
+  - Affine transformation
+  
+The results of the registration step are stored within numpy files (*.npy)
+
+#### Extraction step
+
+The individual traces are detected using a LoG filter and a tracking algorithm.
+
+The drift of the microscope stage can be corrected at this stage.
+
+The individual traces are stored within a JSON file (compressed as .json.zip) following the [OpenFRET format](https://pypi.org/project/openfret) (source repo: [https://github.com/simol-lab/OpenFRET](https://github.com/simol-lab/OpenFRET))
+
+All metadata are stored within the OpenFRET structure, including the local background intensity over time for each individual traces.
+
+### Traces analysis
+
+#### Input data
+
+For the trace analysis (filtering, FRET histogram, kinetics), the input data is the JSON file (compressed as .json.zip) following the [OpenFRET format](https://pypi.org/project/openfret).
+
+The outputs of the analysis pipeline are saved within the same .json file through its metadata.
+
+#### Trace filtering
+
+`PySMACKS` contains a trace viewer, which you can use to visualize traces one-by-one and manually filter them. You can also highlight relevant sections of these traces using an interactive tool.
+
+Especially, this labelling interactive tool can be used to curate datasets for ML/DL training purposes.
+
+*NB: the development of a fully integrated deep learning approach for traces filtering in under development and will be implemented in future releases of PySMACKS.*
+
+#### Stoichiometry-Efficiency FRET histogram
+
+If your data are ALEX-smFRET, after filtering and labelling of FRET, Donor-Only and Acceptor-Only sections of individual traces, you can plot the stoichiometry-efficiency (SE) FRET histogram using this module.
+
+Especially, the calculation of the FRET corrections factors (alpha, delta, beta and gamma) is fully automated with intermediate quality check by the user.
+
+A corrected FRET efficiency histogram can be computed.
+
+#### Kinetic analysis
+
+The last module of the pipeline is dedicated to the extraction of the kinetic rates governing states transitions, using a Hidden-Markov Model (HMM) framework.
+
+In details, this HMM approach relies on the [SMACKS framework](https://www.singlemolecule.uni-freiburg.de/software/smacks) (original study: [10.1016/j.bpj.2016.08.023](https://doi.org/10.1016/j.bpj.2016.08.023)), initially 
+developed in IGOR language, and ported to Python within `PySMACKS`.
+
+Users can conduct HMM inferences on a Trace-by-Trace basis (one individual HMM model optimized for each individual traces), or on an Ensemble way.
+
+The outputs are rates matrix (TbT or Ensemble), related to the discrete states transition rates of the single-molecules.
+
+## Documentation
+
+The full documentation associated with `PySMACKS` is available at the following URL (English):
+
+[https://molcretb.github.io/PySMACKS](https://molcretb.github.io/PySMACKS)
+  
+## Contributors
+
+Bastien Molcrette [[0000-0002-5995-5376]](https://orcid.org/0000-0002-5995-5376) (University of Basel): development, documentation, maintenance, primary contact
+
+Sonja Schmid [[0000-0002-3710-5602]](https://orcid.org/0000-0002-3710-5602) (University of Basel): support, funding
+
+### Contributing
+
+Contributions to `PySMACKS` are very welcome! If you would like to join the development team, please follow these steps:
+
+  1. Fork the `PySMACKS` repository
+  2. Create a new branch
+  3. Add your new features
+  4. Commit the changes
+  5. Push to the newly created branch
+  6. Open a Pull Request
+  
+Thanks for your help and support!
+
+## Acknowledgements
+
+  - Thanks to all early testers of `PySMACKS`!
+  - Special thanks to all current and past members of the Schmid lab, including all the master students that have joined us for their internship.
+  - The past crew of GigaScience and the biocurators community, for their dedication to open science and FAIR principle.
+  - The Stack Overflow and Image.sc communities, for providing great insights in software development and image analysis.
+  
+## Funding
+
+This work is supported by:
+
+  - the University of Basel
+  - the Swiss Nanoscience Institute (SNI)
+  - the Swiss National Science Foundation (SNSF)
+  - the National Centres of Competence in Research (NCCR)
+  - the Innovation Office of the University of Basel
+
+## Citation
+
+Molcrette, B., & Schmid, S. (2026). PySMACKS (Version 1.0.0b2) [Computer software]. https://github.com/molcretb/PySMACKS
+
+### Persistent identifiers
+
+  - [RRID:SCR_028788](https://scicrunch.org/resolver/RRID:SCR_028788)
+  - [biotools:pysmacks](https://bio.tools/pysmacks)
+  - [swh:1:snp:55dd878eb83b5de7a64e0f104e9db2dacf2c6669;origin=https://github.com/molcretb/PySMACKS](https://archive.softwareheritage.org/swh:1:snp:55dd878eb83b5de7a64e0f104e9db2dacf2c6669;origin=https://github.com/molcretb/PySMACKS)
+
+## License
+
+Distributed under the [MIT License](https://opensource.org/license/MIT). See `LICENSE` for more information.
+
+## Contact
+
+Please use the [GitHub issues](https://github.com/molcretb/PySMACKS/issues) to report any problem with `PySMACKS`, thanks.
+
+Other requests: send email to `bastien.molcrette@unibas.ch`
