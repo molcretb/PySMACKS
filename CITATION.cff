@@ -1,0 +1,47 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: PySMACKS
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Bastien
+    family-names: Molcrette
+    email: bastien.molcrette@unibas.ch
+    affiliation: University of Basel
+    orcid: 'https://orcid.org/0000-0002-5995-5376'
+  - given-names: Sonja
+    family-names: Schmid
+    email: sonja.schmid@unibas.ch
+    affiliation: University of Basel
+    orcid: 'https://orcid.org/0000-0002-3710-5602'
+identifiers:
+  - type: other
+    value: 'RRID:SCR_028788'
+    description: RRID PID
+  - type: other
+    value: 'biotools:pysmacks'
+    description: biotools PID
+repository-code: 'https://github.com/molcretb/PySMACKS'
+url: 'https://molcretb.github.io/PySMACKS'
+abstract: >-
+  Python computational framework for analysis of
+  single-molecule FRET data
+keywords:
+  - single-molecule FRET
+  - smFRET
+  - biophysics
+  - Python
+  - HMM
+  - image analysis
+  - channels registration
+  - microscope stage drift correction
+  - FRET histogram
+  - OpenFRET
+license: MIT
+commit: 0d00a06
+version: 1.0.0b2
+date-released: '2026-08-04'
