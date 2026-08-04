@@ -1,5 +1,7 @@
 # Installation
 
+`PySMACKS` is provided as a Python package and is freely available from [https://pypi.org/project/PySMACKS/](https://pypi.org/project/PySMACKS/).
+
 ## Using pip
 
 The suggested installation method is to use pip within a virtual environment.

@@ -60,25 +60,25 @@ The suggested installation method is to use pip within a virtual environment:
 
   1. Set a virtual environment
   
-    ```bash
+    ```
     python -m venv NAME_OF_YOUR_VENV
 	```
 	
 	And activate it
 	
-	```bash
+	```
     NAME_OF_YOUR_VENV\Scripts\activate
 	```
 	
   2. Install the PySMACKS package using pip
 
-    ```bash
+    ```
     pip install PySMACKS
     ```
 	
   3. Launch the PySMACKS GUI using the command
   
-    ```bash
+    ```
     PySMACKS_GUI
     ```
 

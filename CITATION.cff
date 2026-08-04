@@ -25,6 +25,9 @@ identifiers:
   - type: other
     value: 'biotools:pysmacks'
     description: biotools PID
+  - type: other
+    value: 'swh:1:snp:55dd878eb83b5de7a64e0f104e9db2dacf2c6669;origin=https://github.com/molcretb/PySMACKS'
+    description: Software Heritage PID
 repository-code: 'https://github.com/molcretb/PySMACKS'
 url: 'https://molcretb.github.io/PySMACKS'
 abstract: >-
