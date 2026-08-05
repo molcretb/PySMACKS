@@ -41,3 +41,24 @@ To create a virtual environment, you can type the following in your Python conso
     ```
     NAME_OF_YOUR_VENV\Scripts\activate
     ```
+
+## Dependencies
+
+| Libraries | Licence | Note  |
+|----------|----------|----------|
+| [numpy](https://pypi.org/project/numpy/)  |   BSD-3-Clause    |         |
+| [matplotlib](https://pypi.org/project/matplotlib/)  |    Python Software Foundation License    |       |
+| [pandas](https://pypi.org/project/pandas/)  |    BSD 3-Clause    |       |
+| [PyQt5](https://pypi.org/project/PyQt5/)  |   GPL v3     |       |
+| [scipy](https://pypi.org/project/scipy/)  |   BSD License     |       |
+| [scikit-image](https://pypi.org/project/scikit-image/)  |    BSD License    |       |
+| [big-fish](https://pypi.org/project/big-fish/)  |   BSD 3-Clause     |   [paper](https://doi.org/10.1101/2021.07.20.453024)    |
+| [hmmlearn](https://pypi.org/project/hmmlearn/)  |    BSD License    |       |
+| [opencv-python](https://pypi.org/project/opencv-python/)  |    Apache 2.0    |       |
+| [openfret](https://pypi.org/project/openfret/)  |   MIT     |    [GitHub repo](https://github.com/simol-lab/OpenFRET)   |
+| [pillow](https://pypi.org/project/pillow/)  |    MIT-CMU    |       |
+| [ruptures](https://pypi.org/project/ruptures/)  |   BSD-2-Clause     |   [paper](https://doi.org/10.1016/j.sigpro.2019.107299) * not used in the current version of `PySMACKS`*   |
+| [seaborn](https://pypi.org/project/seaborn/)  |   BSD License     |       |
+| [trackpy](https://pypi.org/project/trackpy/)  |        |  [GitHub repo](https://github.com/soft-matter/trackpy)     |
+| [tvdcondat2013](https://pypi.org/project/TVDCondat2013/)  |   CeCILL FREE SOFTWARE     |   [GitHub repo](https://github.com/bgailleton/TVD_Condat2013)    |
+| [uuid7](https://pypi.org/project/uuid7/)  |    MIT    |       |

@@ -11,7 +11,7 @@ and the availability of state-of-the-art computational packages, especially in m
 smFRET experiments, hence the development and integration of this feature into `PySMACKS`.
 
 `PySMACKS` is modular in its architecture and is meant to follow the FAIR data principles. Especially, the choice of the [OpenFRET format](https://pypi.org/project/openfret) for the storage of the traces datasets is motivated by 
-an interoperability purpose, with the idea that this open format makes it easy to translate to antoher open format (for instance netCDF) without loss of metadata. 
+an interoperability purpose, with the idea that this open format makes it easy to translate to another open format (for instance netCDF) without loss of metadata. 
 Open science is a core value of the development team of `PySMACKS` and we hope that the smFRET community will benefit from this framework and build upon it.
 
 `PySMACKS` is provided as a Python package and is freely available from [https://pypi.org/project/PySMACKS/](https://pypi.org/project/PySMACKS/).
@@ -25,7 +25,6 @@ Open science is a core value of the development team of `PySMACKS` and we hope t
   - [Contributors](#contributors)
   - [Acknowledgements](#acknowledgements)
   - [Funding](#funding)
-  - [Citation](#citation)
   - [Citation](#citation)
   - [License](#license)
   - [Contact](#contact)
@@ -42,7 +41,7 @@ In the current version (1.0.0):
     - Microscope stage drift correction
     - local background correction over time using the median of surrounding pixels, or advanced strategy (Total Variation, Minimum of Total Variation)
     - Storage of traces within OpenFRET JSON files
-- Traces iewer and filtering
+- Traces viewer and filtering
     - interactive plot
     - manual labelling tool for downstream analysis of highlighted sections and/or ML-DL curation of training datasets
 - Stoichiometry-Efficiency FRET histogram
@@ -81,6 +80,27 @@ The suggested installation method is to use pip within a virtual environment:
     ```
     PySMACKS_GUI
     ```
+
+### Dependencies
+
+| Libraries | Licence | Note  |
+|----------|----------|----------|
+| [numpy](https://pypi.org/project/numpy/)  |   BSD-3-Clause    |         |
+| [matplotlib](https://pypi.org/project/matplotlib/)  |    Python Software Foundation License    |       |
+| [pandas](https://pypi.org/project/pandas/)  |    BSD 3-Clause    |       |
+| [PyQt5](https://pypi.org/project/PyQt5/)  |   GPL v3     |       |
+| [scipy](https://pypi.org/project/scipy/)  |   BSD License     |       |
+| [scikit-image](https://pypi.org/project/scikit-image/)  |    BSD License    |       |
+| [big-fish](https://pypi.org/project/big-fish/)  |   BSD 3-Clause     |   [paper](https://doi.org/10.1101/2021.07.20.453024)    |
+| [hmmlearn](https://pypi.org/project/hmmlearn/)  |    BSD License    |       |
+| [opencv-python](https://pypi.org/project/opencv-python/)  |    Apache 2.0    |       |
+| [openfret](https://pypi.org/project/openfret/)  |   MIT     |    [GitHub repo](https://github.com/simol-lab/OpenFRET)   |
+| [pillow](https://pypi.org/project/pillow/)  |    MIT-CMU    |       |
+| [ruptures](https://pypi.org/project/ruptures/)  |   BSD-2-Clause     |   [paper](https://doi.org/10.1016/j.sigpro.2019.107299) * not used in the current version of `PySMACKS`*   |
+| [seaborn](https://pypi.org/project/seaborn/)  |   BSD License     |       |
+| [trackpy](https://pypi.org/project/trackpy/)  |        |  [GitHub repo](https://github.com/soft-matter/trackpy)     |
+| [tvdcondat2013](https://pypi.org/project/TVDCondat2013/)  |   CeCILL FREE SOFTWARE     |   [GitHub repo](https://github.com/bgailleton/TVD_Condat2013)    |
+| [uuid7](https://pypi.org/project/uuid7/)  |    MIT    |       |
 
 ## Workflow
 
@@ -163,6 +183,14 @@ developed in IGOR language, and ported to Python within `PySMACKS`.
 Users can conduct HMM inferences on a Trace-by-Trace basis (one individual HMM model optimized for each individual traces), or on an Ensemble way.
 
 The outputs are rates matrix (TbT or Ensemble), related to the discrete states transition rates of the single-molecules.
+
+## Tutorial dataset
+
+To illustrate the functionalities of `PySMACKS` and help new users to learn how to navigate through this framework, we provide in a [Zenodo repository](https://doi.org/10.5281/zenodo.21793246) a complete dataset that you can use as inputs for each modules of `PySMACKS`.
+
+This dataset contains experimental data from a Holliday junction sample (two states model) acquired with our custom TIRF setup (Schmid lab, University of Basel, 2026).
+
+Citation: Molcrette, B.& Schmid, S. (2026). Dataset for the PySMACKS tutorial (Version 1.0.0) [Dataset]. Zenodo. https://doi.org/10.5281/zenodo.21793247
 
 ## Documentation
 
